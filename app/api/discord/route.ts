@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     }
 
     const pdf = await renderReportPdf(report);
-    await sendToDiscord({
+    const result = await sendToDiscord({
       botToken,
       channelId,
       applicantName: settings.applicantName,
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
       pdf: new Uint8Array(pdf),
     });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Discord send failed" },

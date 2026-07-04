@@ -23,9 +23,11 @@ type Run = {
   running: boolean;
   discord: DiscordState;
   discordError?: string;
+  discordAt?: string;
 };
 
 const EXAMPLES = ["Stripe", "Tesla", "https://notion.so", "Figma"];
+const CHAT_STARTERS = ["How do they make money?", "Who's their biggest competitor?", "What's their ICP?"];
 
 function App() {
   const { settings, hasAI, hasDiscord } = useSettings();
@@ -64,11 +66,9 @@ function App() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ report, settings }),
         });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error || `HTTP ${res.status}`);
-        }
-        patchRun(id, { discord: "sent" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        patchRun(id, { discord: "sent", discordAt: data.timestamp });
       } catch (err) {
         patchRun(id, { discord: "error", discordError: err instanceof Error ? err.message : "failed" });
       }
@@ -291,10 +291,24 @@ function App() {
                         discordState={run.discord}
                         discordEnabled={hasDiscord}
                         discordError={run.discordError}
+                        discordAt={run.discordAt}
                         isNew={run.id === lastRun?.id}
                       />
                     )}
                     {run.chat.length > 0 && <ChatThread messages={run.chat} streaming={run.chatStreaming} />}
+                    {run.report && run.chat.length === 0 && run.id === lastRun?.id && !busy && (
+                      <div className="flex flex-wrap gap-2">
+                        {CHAT_STARTERS.map((s) => (
+                          <button
+                            key={s}
+                            onClick={() => sendChat(s)}
+                            className="press-scale type-caption rounded-pill border border-hairline bg-canvas px-3.5 py-2 text-ink-muted-80 transition-colors hover:border-primary/40 hover:text-ink"
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     {run.error && (
                       <div
                         className="animate-fadeup type-body rounded-lg border border-hairline px-5 py-4"

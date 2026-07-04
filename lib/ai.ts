@@ -1,4 +1,4 @@
-import { DEFAULT_MODEL, type Report } from "./types";
+import { DEFAULT_MODEL, type ConfidenceTier, type OutreachEmail, type Report } from "./types";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -175,5 +175,63 @@ export async function analyzeCompany(
     competitors,
     sources: allSources,
     model,
+    confidence: computeConfidence(input),
+  };
+}
+
+// Self-audit: rate how well each report section is backed by real evidence.
+// crawled pages + matching search snippets = independent sources.
+function computeConfidence(input: AnalyzeInput): Record<string, ConfidenceTier> {
+  const pages = input.crawledPages.length;
+  const search = input.searchSnippets.length;
+  const comp = input.competitorSnippets.length;
+  const tier = (n: number): ConfidenceTier => (n >= 3 ? "high" : n >= 1 ? "moderate" : "inferred");
+  return {
+    // Summary & products come straight from the site + public snippets.
+    summary: tier(pages + search),
+    products: tier(pages),
+    // Pain points are AI-reasoned, never directly sourced.
+    painPoints: "inferred",
+    // Competitors are seeded by dedicated competitor search.
+    competitors: comp > 0 ? tier(comp) : "inferred",
+  };
+}
+
+const EMAIL_PROMPT = `You are an SDR at Relu Consultancy, an AI & automation consulting firm. Write a concise, professional cold outreach email to the company below. Anchor the pitch on ONE of their detected pain points and how AI/automation consulting could address it. Rules:
+- 110-150 words in the body. No fluff, no "I hope this finds you well".
+- Specific to this company — reference their actual product/pain point.
+- Confident, human, not salesy. One clear CTA (a short call).
+- Return ONLY JSON: { "subject": string, "body": string }. Body may use \\n for line breaks.`;
+
+export async function draftOutreachEmail(
+  report: Report,
+  key: string,
+  model: string = DEFAULT_MODEL,
+): Promise<OutreachEmail> {
+  const c = report.company;
+  const userMsg = `Company: ${c.name}
+Website: ${c.website || "unknown"}
+Summary: ${c.summary}
+Products/Services: ${c.products.join(", ")}
+Pain points: ${c.painPoints.map((p) => `- ${p}`).join("\n")}`;
+
+  const messages = [
+    { role: "system", content: EMAIL_PROMPT },
+    { role: "user", content: userMsg },
+  ];
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = parseJson(await callOpenRouter(messages, model, key));
+  } catch {
+    const repair = [
+      ...messages,
+      { role: "user", content: "Respond again with ONLY the JSON object { subject, body }." },
+    ];
+    parsed = parseJson(await callOpenRouter(repair, model, key));
+  }
+  return {
+    subject: typeof parsed.subject === "string" ? parsed.subject : `Helping ${c.name} with AI & automation`,
+    body: typeof parsed.body === "string" ? parsed.body : "",
   };
 }

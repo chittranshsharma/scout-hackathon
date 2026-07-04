@@ -22,9 +22,12 @@ Built for the Relu Consultancy AI & Automation hackathon.
 | **Discord (bonus)** | Settings for bot token / channel ID / applicant name+email; auto-sends report + PDF after generation |
 
 ### Standout features (bonus)
-- **Conversational follow-up chat** — after the report, keep asking: *"how do they make money?"*, *"compare them to Competitor X"*. Answers stream token-by-token, grounded in the crawled + searched context (`/api/chat`). A true ChatGPT-style assistant, not a one-shot form.
-- **Deterministic enrichment** — extracts the company **logo** (validated Clearbit → favicon fallback), **brand color** (theme-color → tints the report + PDF), **tech-stack fingerprint** (Next.js/React/Shopify/HubSpot/GA/Stripe/…), and **social profiles** straight from the homepage. Shown in the dossier and the PDF.
-- **Polish** — typewriter reveal on the AI summary, numbered source citations, copy-as-Markdown, one-click regenerate.
+- **Conversational follow-up chat** — after the report, keep asking: *"how do they make money?"*, *"compare them to Competitor X"*. Answers stream token-by-token, grounded in the crawled + searched context (`/api/chat`), with starter suggestion chips. A true ChatGPT-style assistant, not a one-shot form.
+- **AI-drafted outreach email** — one click drafts a tailored cold email to the researched company, anchored on its detected pain points and positioned as AI/automation consulting (`/api/email`). Copy or regenerate. Shows business thinking, not just extraction.
+- **Self-audit confidence badges** — each section (summary/products/pain points/competitors) is tagged High / Moderate / AI-inferred based on how many independent sources backed it. The system grades its own certainty instead of blind-trusting the LLM.
+- **Deterministic enrichment** — extracts the company **logo** (validated Clearbit → favicon fallback), **brand color** (theme-color → tints the report + PDF + Discord embed), **tech-stack fingerprint** (Next.js/React/Shopify/HubSpot/GA/Stripe/…), and **social profiles** straight from the homepage.
+- **Rich Discord delivery** — Action-Blue embed with logo thumbnail, products / pain points / competitors fields, PDF attachment; returns a delivery timestamp; manual retry with specific error messages (401 invalid token / 403 missing perms / 404 bad channel).
+- **Polish** — typewriter reveal on the AI summary, numbered source citations, copy-as-Markdown, export **.md / .json**, one-click regenerate.
 
 ### Engineering touches
 - **Server-Sent Events** stream live progress (resolve → crawl *N/M* → search → analyze) and chat tokens.

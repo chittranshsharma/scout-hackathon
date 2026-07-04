@@ -20,7 +20,13 @@ export type Report = {
   brandColor?: string;
   techStack?: string[];
   socials?: Social[];
+  // Self-audit: how well each section is backed by real sources.
+  confidence?: Record<string, ConfidenceTier>;
 };
+
+export type ConfidenceTier = "high" | "moderate" | "inferred";
+
+export type OutreachEmail = { subject: string; body: string };
 
 // One turn of the follow-up conversation grounded on a report.
 export type ChatMessage = { role: "user" | "assistant"; content: string };
