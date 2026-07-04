@@ -1,4 +1,4 @@
-import { DEFAULT_MODEL, type ConfidenceTier, type OutreachEmail, type Report } from "./types";
+import { DEFAULT_MODEL, MODEL_OPTIONS, type ConfidenceTier, type OutreachEmail, type Report } from "./types";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -237,21 +237,25 @@ export async function analyzeCompany(
   };
 }
 
-// Try the chosen model; on any failure fall back once to the stable default,
-// reporting which model actually produced the answer.
+// Free models rate-limit (429) per upstream provider. Try the chosen model
+// first, then walk the OTHER free models — each routes to a different provider,
+// so one is almost always available. Reports which model actually answered.
 async function callWithFallback(
   messages: { role: string; content: string }[],
   model: string,
   key: string,
 ): Promise<{ content: string; actualModel: string }> {
-  try {
-    return { content: await callOpenRouter(messages, model, key), actualModel: model };
-  } catch (e) {
-    if (model !== DEFAULT_MODEL) {
-      return { content: await callOpenRouter(messages, DEFAULT_MODEL, key), actualModel: DEFAULT_MODEL };
+  const chain = [model, ...MODEL_OPTIONS.map((m) => m.id).filter((id) => id !== model)];
+  let lastErr: unknown;
+  for (const mdl of chain) {
+    try {
+      return { content: await callOpenRouter(messages, mdl, key), actualModel: mdl };
+    } catch (e) {
+      lastErr = e;
+      // rate-limited or provider error → immediately try the next model
     }
-    throw e;
   }
+  throw lastErr instanceof Error ? lastErr : new Error("All models failed");
 }
 
 // Verify a phone number appears in source by comparing digit sequences.
@@ -316,13 +320,13 @@ Pain points: ${c.painPoints.map((p) => `- ${p}`).join("\n")}`;
 
   let parsed: Record<string, unknown>;
   try {
-    parsed = parseJson(await callOpenRouter(messages, model, key));
+    parsed = parseJson((await callWithFallback(messages, model, key)).content);
   } catch {
     const repair = [
       ...messages,
       { role: "user", content: "Respond again with ONLY the JSON object { subject, body }." },
     ];
-    parsed = parseJson(await callOpenRouter(repair, model, key));
+    parsed = parseJson((await callWithFallback(repair, model, key)).content);
   }
   return {
     subject: typeof parsed.subject === "string" ? parsed.subject : `Helping ${c.name} with AI & automation`,
