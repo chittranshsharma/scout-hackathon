@@ -295,11 +295,60 @@ function computeConfidence(input: AnalyzeInput): Record<string, ConfidenceTier> 
   };
 }
 
-const EMAIL_PROMPT = `You are an SDR at Relu Consultancy, an AI & automation consulting firm. Write a concise, professional cold outreach email to the company below. Anchor the pitch on ONE of their detected pain points and how AI/automation consulting could address it. Rules:
-- 110-150 words in the body. No fluff, no "I hope this finds you well".
-- Specific to this company — reference their actual product/pain point.
-- Confident, human, not salesy. One clear CTA (a short call).
-- Return ONLY JSON: { "subject": string, "body": string }. Body may use \\n for line breaks.`;
+const BANNED_PHRASES = [
+  "I hope this email finds you well",
+  "I hope this finds you well",
+  "I wanted to reach out",
+  "In today's fast-paced world",
+  "at the end of the day",
+  "circle back",
+  "leverage",
+  "synergy",
+  "unlock potential",
+  "unlock your potential",
+  "game-changer",
+  "game changer",
+  "cutting-edge",
+  "cutting edge",
+  "seamless",
+  "seamlessly",
+  "revolutionize",
+  "dive into",
+  "take it to the next level",
+  "in this day and age",
+];
+
+const EMAIL_PROMPT = `You write cold outreach emails for Relu Consultancy, an AI and automation consulting firm. Write like a real person sending a quick email, not like a marketer.
+
+HARD RULES:
+- Never use em-dashes or en-dashes. Use periods, commas, or "and".
+- Never use these words/phrases: "I hope this email finds you well", "I wanted to reach out", "leverage", "synergy", "seamless", "cutting-edge", "game-changer", "revolutionize", "dive into", "unlock potential", "circle back", "in today's fast-paced world".
+- Body is 80 to 100 words. Short sentences. No paragraph longer than 2 sentences. Contractions are good ("we're", "don't").
+- Open with something specific to THIS company (a product or a real pain point), not a greeting about yourself.
+- One clear ask at the end: a short call.
+- Subject line is short and specific, no clickbait.
+
+Here is the tone to match:
+Subject: Question about scaling VideoSDK's support
+Body: Hi team, I saw VideoSDK powers real-time video for developers. As usage grows, support volume and reliability tend to pile up fast. We help teams automate that with AI, so response times drop without more headcount. Would a quick 15-minute call next week be worth it? Thanks, Relu Consultancy
+
+Return ONLY JSON: { "subject": string, "body": string }. Body may use \\n for line breaks.`;
+
+// Hard safety net on top of the prompt: strip dashes and any banned phrase
+// that slips through, so email output never reads AI-generated.
+function sanitizeEmail(text: string): string {
+  let t = text.replace(/\s*[—–]\s*/g, ", "); // em/en dash → comma
+  for (const p of BANNED_PHRASES) {
+    t = t.replace(new RegExp(p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), "");
+  }
+  return t
+    .replace(/ ,/g, ",")
+    .replace(/,\s*,/g, ",")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([.,!?])/g, "$1")
+    .replace(/\.\s*\./g, ".")
+    .trim();
+}
 
 export async function draftOutreachEmail(
   report: Report,
@@ -329,7 +378,7 @@ Pain points: ${c.painPoints.map((p) => `- ${p}`).join("\n")}`;
     parsed = parseJson((await callWithFallback(repair, model, key)).content);
   }
   return {
-    subject: typeof parsed.subject === "string" ? parsed.subject : `Helping ${c.name} with AI & automation`,
-    body: typeof parsed.body === "string" ? parsed.body : "",
+    subject: sanitizeEmail(typeof parsed.subject === "string" ? parsed.subject : `A quick idea for ${c.name}`),
+    body: sanitizeEmail(typeof parsed.body === "string" ? parsed.body : ""),
   };
 }

@@ -44,71 +44,45 @@ export async function POST(req: NextRequest) {
         }
 
         const wasUrl = looksLikeUrl(input);
+        const t0 = Date.now();
 
-        // 2. Crawl
-        const crawlPages: { url: string; title: string; text: string }[] = [];
-        let crawlSources: string[] = [];
-        let enrichment: import("@/lib/crawl").Enrichment = { socials: [] };
-        if (resolved.website) {
-          progress("crawling", "Crawling website", "Discovering key pages");
-          try {
-            const result = await crawlSite(resolved.website, (i, total, url) => {
-              progress("crawling", `Crawling website (${i}/${total})`, url);
-            });
-            crawlPages.push(...result.pages);
-            crawlSources = result.sources;
-            enrichment = result.enrichment;
-            progress("crawling", `Analyzed ${crawlPages.length} page(s)`);
-          } catch {
-            progress("crawling", "Crawl unavailable — falling back to search");
-          }
-        }
+        // 2 + 3. Crawl and Serper run CONCURRENTLY — they're independent.
+        // Serper uses the resolved name (good for name input; host-slug for URL
+        // input is fine for search). The canonical report name is refined from
+        // the crawl's og:site_name afterwards.
+        progress("crawling", "Crawling website & searching sources", resolved.website || "public sources");
+
+        const crawlPromise = resolved.website
+          ? crawlSite(resolved.website, (i, total, url) => progress("crawling", `Crawling website (${i}/${total})`, url)).catch(() => null)
+          : Promise.resolve(null);
+        const serperPromise =
+          serperKey
+            ? Promise.all([
+                gatherPublicInfo(resolved.name, serperKey).catch(() => null),
+                findCompetitorCandidates(resolved.name, serperKey).catch(() => null),
+              ])
+            : Promise.resolve([null, null] as const);
+
+        const [crawlResult, [pub, comp]] = await Promise.all([crawlPromise, serperPromise]);
+        const tCrawlSearch = Date.now();
+
+        const crawlPages = crawlResult?.pages ?? [];
+        const crawlSources = crawlResult?.sources ?? [];
+        const enrichment: import("@/lib/crawl").Enrichment = crawlResult?.enrichment ?? { socials: [] };
+        const searchSnippets = pub?.snippets ?? [];
+        const competitorSnippets = comp?.snippets ?? [];
+        const searchSources = [...(pub?.sources ?? []), ...(comp?.sources ?? [])];
+        const knownPhone = resolved.knowledgePhone ?? pub?.phone;
+        const knownAddress = resolved.knowledgeAddress ?? pub?.address;
+        progress("searching", `Gathered ${crawlPages.length} page(s) + ${searchSnippets.length} snippet(s)`);
 
         // Canonical company name: for URL input, trust the site's own declared
-        // name (og:site_name / <title>) over the host slug so downstream Serper
-        // queries search the RIGHT company. For name input, trust the Serper
-        // knowledge-graph name from resolution.
+        // name (og:site_name / <title>) over the host slug. For name input,
+        // trust the Serper knowledge-graph name from resolution.
         const companyName = wasUrl ? enrichment.siteName || resolved.name : resolved.name;
-
-        // Debug/verification log (visible in server output during testing).
         console.log(
           `[research] input=${JSON.stringify(input)} wasUrl=${wasUrl} resolvedDomain=${resolved.website || "-"} extractedName=${JSON.stringify(companyName)}`,
         );
-        // Name-input sanity check: warn if the crawled site names a different company.
-        if (!wasUrl && enrichment.siteName) {
-          const a = companyName.toLowerCase().replace(/[^a-z0-9]/g, "");
-          const b = enrichment.siteName.toLowerCase().replace(/[^a-z0-9]/g, "");
-          if (a && b && !a.includes(b.slice(0, 6)) && !b.includes(a.slice(0, 6))) {
-            console.warn(`[research] name mismatch: searched "${companyName}" but site says "${enrichment.siteName}"`);
-          }
-        }
-
-        // 3. Search enrichment (Serper) — skipped gracefully if no key
-        let searchSnippets: string[] = [];
-        let competitorSnippets: string[] = [];
-        let searchSources: string[] = [];
-        let knownPhone = resolved.knowledgePhone;
-        let knownAddress = resolved.knowledgeAddress;
-
-        if (serperKey) {
-          progress("searching", "Searching public sources", "Contact info & competitors");
-          try {
-            const [pub, comp] = await Promise.all([
-              gatherPublicInfo(companyName, serperKey),
-              findCompetitorCandidates(companyName, serperKey),
-            ]);
-            searchSnippets = pub.snippets;
-            competitorSnippets = comp.snippets;
-            searchSources = [...pub.sources, ...comp.sources];
-            knownPhone ??= pub.phone;
-            knownAddress ??= pub.address;
-            progress("searching", "Public research complete");
-          } catch {
-            progress("searching", "Search step skipped — using crawl data only");
-          }
-        } else {
-          progress("searching", "No Serper key — skipping search enrichment");
-        }
 
         if (crawlPages.length === 0 && searchSnippets.length === 0) {
           progress("analyzing", "Limited data — analyzing from name", "Results may be lower confidence");
@@ -129,6 +103,10 @@ export async function POST(req: NextRequest) {
           openrouterKey,
           model,
           [...crawlSources, ...searchSources, ...resolved.sources],
+        );
+        const tAI = Date.now();
+        console.log(
+          `[timing] crawl+search=${tCrawlSearch - t0}ms ai=${tAI - tCrawlSearch}ms total=${tAI - t0}ms model=${report.model}`,
         );
 
         // Attach deterministic enrichment (logo/brand/socials).
@@ -152,7 +130,7 @@ export async function POST(req: NextRequest) {
         ]
           .filter(Boolean)
           .join("\n\n")
-          .slice(0, 12000);
+          .slice(0, 8000);
         send({ type: "context", context });
 
         progress("done", "Research complete");

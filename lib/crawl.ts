@@ -11,9 +11,10 @@ export type Enrichment = {
 };
 export type CrawlResult = { pages: CrawledPage[]; sources: string[]; enrichment: Enrichment };
 
-const MAX_PAGES = 7;
-const PER_PAGE_TIMEOUT = 12000;
-const MAX_TEXT_PER_PAGE = 4000; // chars sent to AI per page
+const MAX_PAGES = 6;
+const PER_PAGE_TIMEOUT = 6000; // slow pages are usually dead weight
+const CONCURRENCY = 5; // parallel internal-page fetches
+const MAX_TEXT_PER_PAGE = 2000; // chars sent to AI per page (relevance-ranked)
 const UA =
   "Mozilla/5.0 (compatible; CompanyResearchBot/1.0; +https://example.com/bot)";
 
@@ -51,26 +52,48 @@ async function fetchPage(url: string): Promise<{ html: string; finalUrl: string 
   }
 }
 
-function extract($: cheerio.CheerioAPI): { title: string; text: string } {
+// Terms that signal a paragraph is relevant to company research.
+const RELEVANCE_TERMS =
+  /\b(product|service|solution|platform|pricing|plan|price|customer|client|feature|offer|provide|build|help|company|founded|headquarter|mission|team|industr|enterprise|API|integrat|tool|software|payment|data|manage|automat)/i;
+
+function scoreParagraph(p: string): number {
+  const matches = p.match(new RegExp(RELEVANCE_TERMS, "gi"));
+  return (matches ? matches.length : 0) + Math.min(p.length / 300, 1);
+}
+
+// Extract deduped, relevance-ranked paragraphs. `globalSeen` dedupes repeated
+// boilerplate ACROSS pages (nav/CTA text that survives element stripping).
+function extract($: cheerio.CheerioAPI, globalSeen: Set<string>): { title: string; text: string } {
   $("script, style, noscript, svg, nav, footer, header, form, iframe, template").remove();
   // Strip cookie/consent/ad banners so their boilerplate doesn't pollute AI input.
   $(
     '[id*="cookie" i], [class*="cookie" i], [id*="consent" i], [class*="consent" i], [class*="banner" i], [id*="gdpr" i], [class*="gdpr" i], [aria-label*="cookie" i], [role="dialog"]',
   ).remove();
   const title = $("title").first().text().trim() || $("h1").first().text().trim();
+
   const parts: string[] = [];
-  const seen = new Set<string>();
   $("h1, h2, h3, p, li").each((_, el) => {
     const t = $(el).text().replace(/\s+/g, " ").trim();
-    // Keep meaningful prose; drop shorties and repeated menu/CTA text.
-    if (t.length > 25 && !seen.has(t)) {
-      seen.add(t);
-      parts.push(t);
-    }
+    if (t.length < 25) return;
+    const key = t.slice(0, 120).toLowerCase();
+    if (globalSeen.has(key)) return; // cross-page duplicate
+    globalSeen.add(key);
+    parts.push(t);
   });
-  let text = parts.join("\n");
-  if (text.length > MAX_TEXT_PER_PAGE) text = text.slice(0, MAX_TEXT_PER_PAGE);
-  return { title, text };
+
+  // Rank by relevance, keep the top paragraphs up to the char budget.
+  const ranked = parts
+    .map((p) => ({ p, s: scoreParagraph(p) }))
+    .sort((a, b) => b.s - a.s);
+  const kept: string[] = [];
+  let used = 0;
+  for (const { p } of ranked) {
+    if (used + p.length > MAX_TEXT_PER_PAGE) continue;
+    kept.push(p);
+    used += p.length + 1;
+    if (used >= MAX_TEXT_PER_PAGE) break;
+  }
+  return { title, text: kept.join("\n") };
 }
 
 const SOCIAL_HOSTS: [string, RegExp][] = [
@@ -236,14 +259,14 @@ export async function crawlSite(
   onPage?: (i: number, total: number, url: string) => void,
 ): Promise<CrawlResult> {
   const startOrigin = new URL(startUrl).origin;
-  const visited = new Set<string>();
   const contentHashes = new Set<string>();
+  const globalSeen = new Set<string>(); // cross-page paragraph dedupe
   const pages: CrawledPage[] = [];
   let enrichment: Enrichment = { socials: [] };
 
   // Fetch robots.txt + homepage together.
   const [disallowed, home] = await Promise.all([fetchDisallowed(startOrigin), fetchPage(startUrl)]);
-  const queue: string[] = [];
+  let queue: string[] = [];
   // Scope everything to the FINAL post-redirect origin (fixes www/http drift).
   let origin = startOrigin;
   if (home) {
@@ -251,36 +274,37 @@ export async function crawlSite(
     // Enrichment from the pristine HTML before extract() strips header/footer.
     enrichment = await extractEnrichment(home.html, home.finalUrl);
     const $ = cheerio.load(home.html);
-    const { title, text } = extract($);
-    visited.add(origin + (new URL(home.finalUrl).pathname.replace(/\/$/, "") || ""));
+    const { title, text } = extract($, globalSeen);
+    const homeKey = origin + (new URL(home.finalUrl).pathname.replace(/\/$/, "") || "");
     if (text) {
       pages.push({ url: home.finalUrl, title, text });
       contentHashes.add(text.slice(0, 200));
     }
-    queue.push(...discoverLinks($, origin, disallowed));
+    queue = discoverLinks($, origin, disallowed)
+      .filter((u) => u !== homeKey)
+      .slice(0, MAX_PAGES - 1);
   }
 
   const total = Math.min(MAX_PAGES, queue.length + 1);
   onPage?.(pages.length, total, startUrl);
 
-  // 2. internal pages
-  for (const url of queue) {
-    if (pages.length >= MAX_PAGES) break;
-    if (visited.has(url)) continue;
-    visited.add(url);
-
-    const fetched = await fetchPage(url);
-    if (!fetched) continue;
-    const $ = cheerio.load(fetched.html);
-    const { title, text } = extract($);
-    if (!text) continue;
-
-    const hash = text.slice(0, 200);
-    if (contentHashes.has(hash)) continue; // dedupe near-identical pages
-    contentHashes.add(hash);
-
-    pages.push({ url, title, text });
-    onPage?.(pages.length, total, url);
+  // 2. internal pages — fetch in parallel batches (bounded concurrency).
+  for (let i = 0; i < queue.length && pages.length < MAX_PAGES; i += CONCURRENCY) {
+    const batch = queue.slice(i, i + CONCURRENCY);
+    const results = await Promise.allSettled(batch.map((u) => fetchPage(u)));
+    for (let j = 0; j < results.length; j++) {
+      if (pages.length >= MAX_PAGES) break;
+      const r = results[j];
+      if (r.status !== "fulfilled" || !r.value) continue;
+      const $ = cheerio.load(r.value.html);
+      const { title, text } = extract($, globalSeen);
+      if (!text) continue;
+      const hash = text.slice(0, 200);
+      if (contentHashes.has(hash)) continue; // dedupe near-identical pages
+      contentHashes.add(hash);
+      pages.push({ url: batch[j], title, text });
+      onPage?.(pages.length, total, batch[j]);
+    }
   }
 
   // Low-yield detection (JS-heavy SPA that cheerio can't render): the caller

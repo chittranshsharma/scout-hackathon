@@ -100,8 +100,9 @@ function App() {
       return;
     }
     const id = crypto.randomUUID();
+    // Cap in-memory history so a long demo session can't grow unbounded.
     setRuns((prev) => [
-      ...prev,
+      ...prev.slice(-11),
       { id, input: q, events: [], chat: [], chatStreaming: false, running: true, discord: "idle" },
     ]);
     setInput("");
@@ -172,7 +173,13 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question: q,
-          context: lastRun.context,
+          // Compact Report JSON as grounding — not the raw crawl text — so
+          // follow-up turns stay cheap. The report already holds the facts.
+          context: JSON.stringify({
+            ...lastRun.report.company,
+            competitors: lastRun.report.competitors,
+            socials: lastRun.report.socials,
+          }),
           company: lastRun.report.company.name,
           history,
           settings,
