@@ -145,7 +145,7 @@ function App() {
   const empty = runs.length === 0;
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-canvas">
       <Sidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -161,46 +161,39 @@ function App() {
       <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
       <main className="relative flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-line px-4 py-3 md:px-6">
+        <header className="flex items-center justify-between bg-parchment/80 px-4 py-3 backdrop-blur-xl md:px-6">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="rounded-lg p-1.5 text-ink-dim hover:bg-panel md:hidden"
+              className="press-scale rounded-full p-1.5 text-ink-muted-48 hover:text-ink md:hidden"
               aria-label="Open menu"
             >
               <IconMenu />
             </button>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-ink-mute">
-                Company Research
-              </span>
-              <span className="hidden items-center gap-1 rounded-full border border-signal/25 bg-signal/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-signal sm:inline-flex">
-                <span className="h-1.5 w-1.5 rounded-full bg-signal" /> Live
-              </span>
-            </div>
+            <span className="type-tagline text-ink">Company Research</span>
           </div>
           <button
             onClick={() => setSettingsOpen(true)}
-            className="rounded-lg p-1.5 text-ink-dim hover:bg-panel hover:text-ink"
+            className="press-scale rounded-full p-1.5 text-ink-muted-48 hover:text-ink"
             aria-label="Settings"
           >
             <IconSettings />
           </button>
         </header>
 
-        <div ref={scrollRef} className="flex-1 overflow-y-auto">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto bg-canvas">
           {empty ? (
             <Hero onPick={(v) => runResearch(v)} />
           ) : (
-            <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
+            <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6">
               {runs.map((run) => (
-                <div key={run.id} className="mb-8">
-                  <div className="mb-4 flex justify-end">
-                    <div className="max-w-[85%] rounded-2xl rounded-br-sm border border-line bg-panel px-4 py-2.5 text-sm text-ink">
+                <div key={run.id} className="mb-10">
+                  <div className="mb-5 flex justify-end">
+                    <div className="type-body max-w-[85%] rounded-lg bg-parchment px-4 py-2.5 text-ink">
                       {run.input}
                     </div>
                   </div>
-                  <div className="space-y-4">
+                  <div className="space-y-5">
                     {(run.running || run.events.length > 0) && !run.report && !run.error && (
                       <Pipeline events={run.events} running={run.running} />
                     )}
@@ -215,13 +208,16 @@ function App() {
                       />
                     )}
                     {run.error && (
-                      <div className="animate-fadeup rounded-2xl border border-danger/30 bg-danger/5 px-5 py-4 text-sm text-danger">
-                        <div className="mb-1 font-mono text-[11px] uppercase tracking-wider">Research failed</div>
+                      <div
+                        className="animate-fadeup type-body rounded-lg border border-hairline px-5 py-4"
+                        style={{ color: "var(--color-danger)" }}
+                      >
+                        <div className="type-caption-strong mb-1">Research failed</div>
                         {run.error}
                         {run.error.toLowerCase().includes("openrouter") && (
                           <button
                             onClick={() => setSettingsOpen(true)}
-                            className="mt-2 block font-mono text-xs text-signal underline"
+                            className="type-caption mt-2 block text-primary hover:underline"
                           >
                             Open settings →
                           </button>
@@ -235,39 +231,37 @@ function App() {
           )}
         </div>
 
-        <div className="border-t border-line bg-base-2/40 px-4 py-4 backdrop-blur-sm md:px-6">
+        <div className="bg-parchment/80 px-4 py-4 backdrop-blur-xl md:px-6">
           <form
             onSubmit={(e) => {
               e.preventDefault();
               runResearch(input);
             }}
-            className="mx-auto flex w-full max-w-3xl items-center gap-2 rounded-2xl border border-line bg-panel px-2 py-2 focus-within:border-signal/50"
+            className="mx-auto flex h-11 w-full max-w-3xl items-center gap-2 rounded-pill border border-hairline bg-canvas px-4 focus-within:border-primary"
           >
-            <span className="pl-2 text-ink-mute">
-              <IconScan width={18} height={18} />
+            <span className="text-ink-muted-48">
+              <IconScan width={17} height={17} />
             </span>
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
               disabled={busy}
               placeholder="Enter a company name or website URL…"
-              className="min-w-0 flex-1 bg-transparent py-1.5 text-sm text-ink placeholder:text-ink-mute focus:outline-none disabled:opacity-60"
+              className="type-body min-w-0 flex-1 bg-transparent text-ink placeholder:text-ink-muted-48 focus:outline-none disabled:opacity-60"
             />
             <button
               type="submit"
               disabled={busy || !input.trim()}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-signal px-4 py-2 text-sm font-semibold text-base transition hover:brightness-110 disabled:opacity-40"
+              className="press-scale type-caption-strong -mr-1 inline-flex items-center gap-1.5 rounded-pill bg-primary px-4 py-2 text-white transition-colors hover:bg-primary-focus disabled:opacity-40"
             >
-              {busy ? (
-                <span className="h-4 w-4 animate-spin-slow rounded-full border-2 border-base border-t-transparent" />
-              ) : (
+              {busy ? "…" : (
                 <>
-                  Research <IconArrow width={16} height={16} />
+                  Research <IconArrow width={14} height={14} />
                 </>
               )}
             </button>
           </form>
-          <p className="mx-auto mt-2 max-w-3xl text-center font-mono text-[10px] text-ink-mute">
+          <p className="type-fine-print mx-auto mt-2.5 max-w-3xl text-center text-ink-muted-48">
             {hasAI ? "Ready" : "Add your OpenRouter key in Settings to begin"} · No data stored
           </p>
         </div>
@@ -278,27 +272,22 @@ function App() {
 
 function Hero({ onPick }: { onPick: (v: string) => void }) {
   return (
-    <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col items-center justify-center px-6 py-16 text-center">
-      <span className="mb-6 inline-flex items-center gap-2 rounded-full border border-signal/25 bg-signal/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.2em] text-signal">
-        <IconScan width={13} height={13} /> AI intelligence engine
-      </span>
-      <h1 className="font-display text-4xl font-semibold leading-[1.05] tracking-tight text-ink sm:text-6xl">
-        Know any company
+    <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col items-center justify-center px-6 py-16 text-center">
+      <h1 className="type-hero text-ink">
+        Research any company
         <br />
-        <span className="text-signal">in one scan.</span>
+        in seconds.
       </h1>
-      <p className="mt-5 max-w-xl text-[15px] leading-relaxed text-ink-dim">
+      <p className="type-lead mt-5 max-w-xl text-ink-muted-80">
         Enter a company name or website. Scout crawls the site, searches public
-        sources, and reasons over it all to build an intelligence dossier —
-        pain points, competitors, and a downloadable PDF.
+        sources, and reasons over it all to build an intelligence dossier.
       </p>
-      <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
-        <span className="font-mono text-[11px] uppercase tracking-wider text-ink-mute">Try</span>
+      <div className="mt-9 flex flex-wrap items-center justify-center gap-2">
         {EXAMPLES.map((e) => (
           <button
             key={e}
             onClick={() => onPick(e)}
-            className="rounded-lg border border-line bg-panel px-3 py-1.5 font-mono text-xs text-ink-dim transition hover:border-signal/40 hover:text-signal"
+            className="press-scale type-caption rounded-md border-[3px] border-divider-soft bg-pearl px-3.5 py-2 text-ink-muted-80 transition-colors hover:border-primary/20"
           >
             {e}
           </button>

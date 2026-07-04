@@ -28,31 +28,22 @@ export default function Sidebar({
     <>
       <div
         onClick={onClose}
-        className={`fixed inset-0 z-30 bg-black/50 backdrop-blur-sm md:hidden ${
-          open ? "block" : "hidden"
-        }`}
+        className={`fixed inset-0 z-30 bg-black/50 md:hidden ${open ? "block" : "hidden"}`}
       />
       <aside
-        className={`fixed z-40 flex h-full w-[264px] flex-col border-r border-line bg-base-2/95 backdrop-blur-md transition-transform duration-300 md:static md:z-0 md:translate-x-0 ${
+        className={`fixed z-40 flex h-full w-[264px] flex-col bg-tile-1 transition-transform duration-300 md:static md:z-0 md:translate-x-0 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         {/* Brand */}
         <div className="flex items-center justify-between px-5 py-5">
           <div className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-signal/30 bg-signal/10 text-signal">
-              <IconScan width={19} height={19} />
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white">
+              <IconScan width={18} height={18} />
             </span>
-            <div>
-              <div className="font-display text-[15px] font-semibold leading-none tracking-tight">
-                Scout
-              </div>
-              <div className="mt-1 font-mono text-[9px] uppercase tracking-[0.2em] text-ink-mute">
-                Company Intel
-              </div>
-            </div>
+            <span className="type-tagline text-white">Scout</span>
           </div>
-          <button onClick={onClose} className="rounded-lg p-1 text-ink-mute hover:text-ink md:hidden" aria-label="Close menu">
+          <button onClick={onClose} className="rounded-sm p-1 text-body-muted hover:text-white md:hidden" aria-label="Close menu">
             <IconX />
           </button>
         </div>
@@ -61,42 +52,37 @@ export default function Sidebar({
         <div className="px-4">
           <button
             onClick={onNew}
-            className="flex w-full items-center gap-2 rounded-xl border border-line bg-panel px-3.5 py-2.5 text-sm font-medium text-ink transition hover:border-signal/40 hover:bg-panel/60"
+            className="press-scale flex w-full items-center justify-center gap-2 rounded-pill bg-primary px-[22px] py-[11px] text-white transition-colors hover:bg-primary-focus"
           >
-            <IconPlus width={16} height={16} className="text-signal" />
-            New research
+            <IconPlus width={16} height={16} />
+            <span className="type-body">New research</span>
           </button>
         </div>
 
         {/* How it works */}
-        <div className="mt-7 px-5">
-          <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.18em] text-ink-mute">
-            How it works
-          </div>
-          <ol className="space-y-3">
+        <div className="mt-8 px-5">
+          <div className="type-caption-strong mb-3 text-body-muted">How it works</div>
+          <ol className="space-y-3.5">
             {STEPS.map((s, i) => (
-              <li key={i} className="flex gap-3 text-[13px] text-ink-dim">
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-line font-mono text-[10px] text-signal">
+              <li key={i} className="flex gap-3">
+                <span className="type-caption flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/10 text-white">
                   {i + 1}
                 </span>
-                <span className="leading-snug">{s}</span>
+                <span className="type-caption leading-snug text-body-muted">{s}</span>
               </li>
             ))}
           </ol>
         </div>
 
         <div className="mt-auto space-y-3 px-4 pb-5">
-          {/* status */}
-          <div className="flex flex-wrap gap-1.5 px-1">
+          <div className="flex flex-wrap gap-x-3 gap-y-1 px-1">
             {([["AI", hasAI], ["Search", hasSearch], ["Discord", hasDiscord]] as [string, boolean][]).map(
               ([l, ok]) => (
-                <span
-                  key={l}
-                  className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider ${
-                    ok ? "text-signal" : "text-ink-mute"
-                  }`}
-                >
-                  <span className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-signal" : "bg-line"}`} />
+                <span key={l} className="type-fine-print inline-flex items-center gap-1.5 text-body-muted">
+                  <span
+                    className="h-1.5 w-1.5 rounded-full"
+                    style={{ background: ok ? "var(--color-primary-on-dark)" : "#4a4a4c" }}
+                  />
                   {l}
                 </span>
               ),
@@ -104,10 +90,10 @@ export default function Sidebar({
           </div>
           <button
             onClick={onOpenSettings}
-            className="flex w-full items-center gap-2 rounded-xl border border-line px-3.5 py-2.5 text-sm text-ink-dim transition hover:border-signal/40 hover:text-ink"
+            className="press-scale flex w-full items-center gap-2 rounded-sm bg-white/[0.06] px-[15px] py-2 text-white transition-colors hover:bg-white/10"
           >
             <IconSettings width={16} height={16} />
-            Settings & API keys
+            <span className="type-button-utility">Settings & API keys</span>
           </button>
         </div>
       </aside>
