@@ -355,28 +355,59 @@ export default function ReportCard({
             )}
           </div>
         ) : (
-          <div className="rounded-lg border border-hairline bg-parchment/60 p-4">
-            <div className="type-fine-print text-ink-muted-48">Subject</div>
-            <div className="type-body-strong mb-3 text-ink">{email.subject}</div>
-            <div className="type-body whitespace-pre-wrap text-ink-muted-80">{email.body}</div>
-            <div className="mt-4 flex gap-1">
-              <button
-                onClick={async () => {
-                  await navigator.clipboard.writeText(`Subject: ${email.subject}\n\n${email.body}`);
-                  setEmailCopied(true);
-                  setTimeout(() => setEmailCopied(false), 1600);
-                }}
-                className="press-scale type-caption rounded-sm px-2.5 py-1.5 text-ink-muted-48 hover:text-ink"
+          <div className="overflow-hidden rounded-lg border border-hairline bg-canvas shadow-sm">
+            {/* macOS window header controls */}
+            <div className="flex items-center gap-1.5 border-b border-divider-soft bg-parchment/80 px-4 py-3">
+              <span className="h-3 w-3 rounded-full bg-red-400/80" style={{ backgroundColor: "#ff5f56" }} />
+              <span className="h-3 w-3 rounded-full bg-yellow-400/80" style={{ backgroundColor: "#ffbd2e" }} />
+              <span className="h-3 w-3 rounded-full bg-green-400/80" style={{ backgroundColor: "#27c93f" }} />
+              <span className="type-caption mx-auto text-ink-muted-48">New Message</span>
+            </div>
+            
+            {/* Headers */}
+            <div className="border-b border-divider-soft bg-canvas px-4 py-2.5 space-y-2">
+              <div className="flex items-center text-ink-muted-48">
+                <span className="type-caption w-16 shrink-0">To:</span>
+                <span className="type-caption-strong text-ink">{c.name} Team</span>
+              </div>
+              <div className="flex items-center text-ink-muted-48">
+                <span className="type-caption w-16 shrink-0">Subject:</span>
+                <span className="type-caption-strong text-ink">{email.subject}</span>
+              </div>
+            </div>
+
+            {/* Email Body */}
+            <div className="bg-canvas px-5 py-6 min-h-[160px]">
+              <div className="type-body whitespace-pre-wrap text-ink-muted-80 leading-relaxed font-sans">{email.body}</div>
+            </div>
+
+            {/* Toolbar Action Bar */}
+            <div className="flex flex-wrap items-center justify-between border-t border-divider-soft bg-parchment/40 px-4 py-3 gap-2">
+              <a
+                href={`mailto:?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`}
+                className="press-scale type-caption-strong inline-flex items-center justify-center gap-1.5 rounded bg-primary px-4 py-2 text-white hover:bg-primary-focus transition-colors"
               >
-                {emailCopied ? "Copied" : "Copy email"}
-              </button>
-              <button
-                onClick={draftEmail}
-                disabled={emailLoading}
-                className="press-scale type-caption rounded-sm px-2.5 py-1.5 text-ink-muted-48 hover:text-ink"
-              >
-                {emailLoading ? "…" : "Regenerate"}
-              </button>
+                Draft in Mail
+              </a>
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(`Subject: ${email.subject}\n\n${email.body}`);
+                    setEmailCopied(true);
+                    setTimeout(() => setEmailCopied(false), 1600);
+                  }}
+                  className="press-scale type-caption rounded border border-hairline bg-canvas px-3 py-2 text-ink hover:bg-parchment/20 transition-colors"
+                >
+                  {emailCopied ? "Copied ✓" : "Copy text"}
+                </button>
+                <button
+                  onClick={draftEmail}
+                  disabled={emailLoading}
+                  className="press-scale type-caption rounded border border-hairline bg-canvas px-3 py-2 text-ink hover:bg-parchment/20 transition-colors disabled:opacity-50"
+                >
+                  {emailLoading ? "Drafting…" : "Regenerate"}
+                </button>
+              </div>
             </div>
           </div>
         )}

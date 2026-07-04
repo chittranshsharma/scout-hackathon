@@ -86,25 +86,16 @@ const s = StyleSheet.create({
   },
 });
 
-function Bullets({ items }: { items: string[] }) {
-  return (
-    <>
-      {items.map((t, i) => (
-        <View key={i} style={s.bullet}>
-          <Text style={s.dot}>▪</Text>
-          <Text style={s.bulletText}>{t}</Text>
-        </View>
-      ))}
-    </>
-  );
-}
+
 
 function ReportDoc({ report }: { report: Report }) {
   const c = report.company;
+  const brandAccent = report.brandColor || "#0066cc";
+  
   return (
     <Document title={`${c.name} — Company Research Report`} author="Relu Consultancy">
       <Page size="A4" style={s.page}>
-        <View style={s.brandBar}>
+        <View style={[s.brandBar, { borderBottomWidth: 3, borderBottomColor: brandAccent }]}>
           <View style={s.brandBarRow}>
             <View>
               <Text style={s.brand}>RELU CONSULTANCY</Text>
@@ -115,11 +106,11 @@ function ReportDoc({ report }: { report: Report }) {
           </View>
         </View>
 
-        <Text style={s.sectionTitle}>Company Information</Text>
+        <Text style={[s.sectionTitle, { color: brandAccent, borderBottomColor: brandAccent }]}>Company Information</Text>
         {c.website ? (
           <View style={s.row}>
             <Text style={s.label}>Website</Text>
-            <Link src={c.website} style={[s.value, s.link]}>{c.website}</Link>
+            <Link src={c.website} style={[s.value, s.link, { color: brandAccent }]}>{c.website}</Link>
           </View>
         ) : null}
         <View style={s.row}>
@@ -133,14 +124,14 @@ function ReportDoc({ report }: { report: Report }) {
 
         {c.summary ? (
           <>
-            <Text style={s.sectionTitle}>Summary</Text>
+            <Text style={[s.sectionTitle, { color: brandAccent, borderBottomColor: brandAccent }]}>Summary</Text>
             <Text style={s.summary}>{c.summary}</Text>
           </>
         ) : null}
 
         {c.products.length ? (
           <>
-            <Text style={s.sectionTitle}>Products & Services</Text>
+            <Text style={[s.sectionTitle, { color: brandAccent, borderBottomColor: brandAccent }]}>Products & Services</Text>
             <View style={s.chipWrap}>
               {c.products.map((p, i) => (
                 <Text key={i} style={s.chip}>{p}</Text>
@@ -151,19 +142,24 @@ function ReportDoc({ report }: { report: Report }) {
 
         {c.painPoints.length ? (
           <>
-            <Text style={s.sectionTitle}>AI-Generated Pain Points</Text>
-            <Bullets items={c.painPoints} />
+            <Text style={[s.sectionTitle, { color: brandAccent, borderBottomColor: brandAccent }]}>AI-Generated Pain Points</Text>
+            {c.painPoints.map((t, i) => (
+              <View key={i} style={s.bullet}>
+                <Text style={[s.dot, { color: brandAccent }]}>▪</Text>
+                <Text style={s.bulletText}>{t}</Text>
+              </View>
+            ))}
           </>
         ) : null}
 
         {report.competitors.length ? (
           <>
-            <Text style={s.sectionTitle}>Competitors</Text>
+            <Text style={[s.sectionTitle, { color: brandAccent, borderBottomColor: brandAccent }]}>Competitors</Text>
             {report.competitors.map((comp, i) => (
               <View key={i} style={s.compRow}>
                 <Text style={s.compName}>{comp.name}</Text>
                 {comp.website ? (
-                  <Link src={comp.website} style={s.compSite}>{comp.website}</Link>
+                  <Link src={comp.website} style={[s.compSite, { color: brandAccent }]}>{comp.website}</Link>
                 ) : (
                   <Text style={s.compSite}>—</Text>
                 )}
@@ -174,11 +170,11 @@ function ReportDoc({ report }: { report: Report }) {
 
         {report.socials && report.socials.length ? (
           <>
-            <Text style={s.sectionTitle}>Social Profiles</Text>
+            <Text style={[s.sectionTitle, { color: brandAccent, borderBottomColor: brandAccent }]}>Social Profiles</Text>
             {report.socials.map((soc, i) => (
               <View key={i} style={s.row}>
                 <Text style={s.label}>{soc.type}</Text>
-                <Link src={soc.url} style={[s.value, s.link]}>{soc.url}</Link>
+                <Link src={soc.url} style={[s.value, s.link, { color: brandAccent }]}>{soc.url}</Link>
               </View>
             ))}
           </>
