@@ -4,6 +4,7 @@ import {
   Page,
   Text,
   View,
+  Image,
   StyleSheet,
   renderToBuffer,
   Link,
@@ -11,12 +12,12 @@ import {
 import type { Report } from "./types";
 
 const C = {
-  ink: "#0f172a",
-  sub: "#475569",
-  accent: "#f59e0b",
-  line: "#e2e8f0",
-  chipBg: "#f1f5f9",
-  dark: "#111827",
+  ink: "#1d1d1f",
+  sub: "#6e6e73",
+  accent: "#0066cc",
+  line: "#e0e0e0",
+  chipBg: "#f5f5f7",
+  dark: "#1d1d1f",
 };
 
 const s = StyleSheet.create({
@@ -29,9 +30,11 @@ const s = StyleSheet.create({
     paddingVertical: 22,
     marginBottom: 24,
   },
-  brand: { color: C.accent, fontSize: 9, letterSpacing: 2, fontFamily: "Helvetica-Bold" },
+  brandBarRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+  brand: { color: "#67b0ff", fontSize: 9, letterSpacing: 2, fontFamily: "Helvetica-Bold" },
   brandSub: { color: "#94a3b8", fontSize: 8, marginTop: 3, letterSpacing: 1 },
   companyName: { color: "#ffffff", fontSize: 24, fontFamily: "Helvetica-Bold", marginTop: 8 },
+  logo: { width: 40, height: 40, objectFit: "contain", borderRadius: 4, backgroundColor: "#ffffff" },
   sectionTitle: {
     fontSize: 11,
     fontFamily: "Helvetica-Bold",
@@ -102,9 +105,14 @@ function ReportDoc({ report }: { report: Report }) {
     <Document title={`${c.name} — Company Research Report`} author="Relu Consultancy">
       <Page size="A4" style={s.page}>
         <View style={s.brandBar}>
-          <Text style={s.brand}>RELU CONSULTANCY</Text>
-          <Text style={s.brandSub}>COMPANY RESEARCH REPORT</Text>
-          <Text style={s.companyName}>{c.name}</Text>
+          <View style={s.brandBarRow}>
+            <View>
+              <Text style={s.brand}>RELU CONSULTANCY</Text>
+              <Text style={s.brandSub}>COMPANY RESEARCH REPORT</Text>
+              <Text style={s.companyName}>{c.name}</Text>
+            </View>
+            {report.logo ? <Image src={report.logo} style={s.logo} /> : null}
+          </View>
         </View>
 
         <Text style={s.sectionTitle}>Company Information</Text>
@@ -159,6 +167,29 @@ function ReportDoc({ report }: { report: Report }) {
                 ) : (
                   <Text style={s.compSite}>—</Text>
                 )}
+              </View>
+            ))}
+          </>
+        ) : null}
+
+        {report.techStack && report.techStack.length ? (
+          <>
+            <Text style={s.sectionTitle}>Detected Technology</Text>
+            <View style={s.chipWrap}>
+              {report.techStack.map((t, i) => (
+                <Text key={i} style={s.chip}>{t}</Text>
+              ))}
+            </View>
+          </>
+        ) : null}
+
+        {report.socials && report.socials.length ? (
+          <>
+            <Text style={s.sectionTitle}>Social Profiles</Text>
+            {report.socials.map((soc, i) => (
+              <View key={i} style={s.row}>
+                <Text style={s.label}>{soc.type}</Text>
+                <Link src={soc.url} style={[s.value, s.link]}>{soc.url}</Link>
               </View>
             ))}
           </>

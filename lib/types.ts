@@ -1,5 +1,7 @@
 export type Competitor = { name: string; website: string };
 
+export type Social = { type: string; url: string };
+
 export type Report = {
   company: {
     name: string;
@@ -13,7 +15,15 @@ export type Report = {
   competitors: Competitor[];
   sources: string[];
   model: string;
+  // Deterministic enrichment extracted during crawl (not AI-generated)
+  logo?: string;
+  brandColor?: string;
+  techStack?: string[];
+  socials?: Social[];
 };
+
+// One turn of the follow-up conversation grounded on a report.
+export type ChatMessage = { role: "user" | "assistant"; content: string };
 
 export type Settings = {
   openrouterKey?: string;
@@ -43,7 +53,9 @@ export type ProgressEvent = {
 
 export type ReportEvent = { type: "report"; report: Report };
 export type ErrorEvent = { type: "error"; message: string };
-export type StreamEvent = ProgressEvent | ReportEvent | ErrorEvent;
+// Condensed crawl + search text held client-side to ground follow-up chat.
+export type ContextEvent = { type: "context"; context: string };
+export type StreamEvent = ProgressEvent | ReportEvent | ErrorEvent | ContextEvent;
 
 // All slugs verified free (prompt+completion pricing $0) on OpenRouter — see
 // https://openrouter.ai/api/v1/models. General-purpose instruct/chat models only.

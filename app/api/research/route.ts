@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
         // 2. Crawl
         const crawlPages: { url: string; title: string; text: string }[] = [];
         let crawlSources: string[] = [];
+        let enrichment: import("@/lib/crawl").Enrichment = { techStack: [], socials: [] };
         if (resolved.website) {
           progress("crawling", "Crawling website", "Discovering key pages");
           try {
@@ -54,6 +55,7 @@ export async function POST(req: NextRequest) {
             });
             crawlPages.push(...result.pages);
             crawlSources = result.sources;
+            enrichment = result.enrichment;
             progress("crawling", `Analyzed ${crawlPages.length} page(s)`);
           } catch {
             progress("crawling", "Crawl unavailable — falling back to search");
@@ -108,7 +110,31 @@ export async function POST(req: NextRequest) {
           [...crawlSources, ...searchSources, ...resolved.sources],
         );
 
+        // Attach deterministic enrichment (logo/brand/tech/socials).
+        report.logo = enrichment.logo;
+        report.brandColor = enrichment.brandColor;
+        report.techStack = enrichment.techStack;
+        report.socials = enrichment.socials;
+
         send({ type: "report", report });
+
+        // Emit condensed grounding context for follow-up chat (client holds it).
+        const context = [
+          `Company: ${report.company.name} (${report.company.website || "no site"})`,
+          report.company.summary,
+          `Products/Services: ${report.company.products.join(", ")}`,
+          `Pain points: ${report.company.painPoints.join(" | ")}`,
+          `Competitors: ${report.competitors.map((c) => c.name).join(", ")}`,
+          "--- Crawled content ---",
+          ...crawlPages.map((p) => `# ${p.title}\n${p.text}`),
+          "--- Search snippets ---",
+          ...searchSnippets,
+        ]
+          .filter(Boolean)
+          .join("\n\n")
+          .slice(0, 12000);
+        send({ type: "context", context });
+
         progress("done", "Research complete");
       } catch (err) {
         send({ type: "error", message: err instanceof Error ? err.message : "Unknown error" });

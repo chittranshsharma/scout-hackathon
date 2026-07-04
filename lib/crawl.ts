@@ -1,7 +1,14 @@
 import * as cheerio from "cheerio";
+import type { Social } from "./types";
 
 export type CrawledPage = { url: string; title: string; text: string };
-export type CrawlResult = { pages: CrawledPage[]; sources: string[] };
+export type Enrichment = {
+  logo?: string;
+  brandColor?: string;
+  techStack: string[];
+  socials: Social[];
+};
+export type CrawlResult = { pages: CrawledPage[]; sources: string[]; enrichment: Enrichment };
 
 const MAX_PAGES = 7;
 const PER_PAGE_TIMEOUT = 12000;
@@ -53,6 +60,85 @@ function extract($: cheerio.CheerioAPI): { title: string; text: string } {
   return { title, text };
 }
 
+// Signatures for lightweight tech-stack fingerprinting from raw homepage HTML.
+const TECH_SIGNS: [string, RegExp][] = [
+  ["Next.js", /\/_next\/|__NEXT_DATA__/],
+  ["React", /data-reactroot|react\.production|_reactListening/],
+  ["Vue.js", /data-v-[0-9a-f]{8}|__vue__|vue\.runtime/],
+  ["Angular", /ng-version=|ng-app=/],
+  ["Gatsby", /___gatsby|gatsby-/],
+  ["Svelte", /svelte-[0-9a-z]+/],
+  ["WordPress", /wp-content|wp-includes/],
+  ["Shopify", /cdn\.shopify\.com|Shopify\.theme/],
+  ["Wix", /static\.wixstatic\.com|_wixCssImports/],
+  ["Squarespace", /squarespace\.com|static1\.squarespace/],
+  ["Webflow", /assets\.website-files\.com|webflow\.js/],
+  ["HubSpot", /js\.hs-scripts\.com|hs-analytics/],
+  ["Google Analytics", /googletagmanager\.com|google-analytics\.com|gtag\(/],
+  ["Segment", /cdn\.segment\.com|analytics\.js/],
+  ["Intercom", /widget\.intercom\.io|intercomSettings/],
+  ["Stripe", /js\.stripe\.com/],
+  ["Cloudflare", /cdnjs\.cloudflare\.com|__cf_/],
+];
+
+const SOCIAL_HOSTS: [string, RegExp][] = [
+  ["LinkedIn", /linkedin\.com\/(company|in|school)\//i],
+  ["X", /(twitter|x)\.com\/[A-Za-z0-9_]+/i],
+  ["Facebook", /facebook\.com\/[A-Za-z0-9.]+/i],
+  ["Instagram", /instagram\.com\/[A-Za-z0-9_.]+/i],
+  ["YouTube", /youtube\.com\/(c\/|channel\/|@|user\/)?[A-Za-z0-9_-]+/i],
+  ["GitHub", /github\.com\/[A-Za-z0-9-]+/i],
+  ["TikTok", /tiktok\.com\/@[A-Za-z0-9_.]+/i],
+];
+
+async function validImage(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(5000) });
+    return res.ok && (res.headers.get("content-type") || "").startsWith("image");
+  } catch {
+    return false;
+  }
+}
+
+// Pull logo / brand color / tech stack / socials from the pristine homepage.
+async function extractEnrichment(html: string, origin: string): Promise<Enrichment> {
+  const $ = cheerio.load(html);
+  const host = new URL(origin).hostname.replace(/^www\./, "");
+
+  // Brand color from theme-color meta (cheap, often present).
+  let brandColor: string | undefined;
+  const tc = $('meta[name="theme-color"]').attr("content")?.trim();
+  if (tc && /^#?[0-9a-f]{3,8}$|^rgb/i.test(tc)) brandColor = tc.startsWith("#") || tc.startsWith("rgb") ? tc : `#${tc}`;
+
+  // Tech stack fingerprint.
+  const techStack: string[] = [];
+  for (const [name, re] of TECH_SIGNS) {
+    if (re.test(html)) techStack.push(name);
+  }
+
+  // Social links (first match per network).
+  const socials: Social[] = [];
+  const seenTypes = new Set<string>();
+  $("a[href]").each((_, el) => {
+    const href = $(el).attr("href") || "";
+    for (const [type, re] of SOCIAL_HOSTS) {
+      if (seenTypes.has(type)) continue;
+      if (re.test(href) && /^https?:/i.test(href)) {
+        seenTypes.add(type);
+        socials.push({ type, url: href.split("?")[0] });
+      }
+    }
+  });
+
+  // Logo: Clearbit gives clean transparent PNGs; fall back to a favicon that
+  // always resolves. Validated so the PDF renderer never hits a 404.
+  const clearbit = `https://logo.clearbit.com/${host}`;
+  const favicon = `https://www.google.com/s2/favicons?domain=${host}&sz=128`;
+  const logo = (await validImage(clearbit)) ? clearbit : favicon;
+
+  return { logo, brandColor, techStack: techStack.slice(0, 8), socials };
+}
+
 function discoverLinks($: cheerio.CheerioAPI, origin: string): string[] {
   const scored: { url: string; score: number }[] = [];
   const seen = new Set<string>();
@@ -95,11 +181,14 @@ export async function crawlSite(
   const visited = new Set<string>();
   const contentHashes = new Set<string>();
   const pages: CrawledPage[] = [];
+  let enrichment: Enrichment = { techStack: [], socials: [] };
 
   // 1. homepage
   const homeHtml = await fetchPage(startUrl);
   const queue: string[] = [];
   if (homeHtml) {
+    // Enrichment from the pristine HTML before extract() strips header/footer.
+    enrichment = await extractEnrichment(homeHtml, origin);
     const $ = cheerio.load(homeHtml);
     const { title, text } = extract($);
     const home = origin + (new URL(startUrl).pathname.replace(/\/$/, "") || "");
@@ -134,5 +223,5 @@ export async function crawlSite(
     onPage?.(pages.length, total, url);
   }
 
-  return { pages, sources: pages.map((p) => p.url) };
+  return { pages, sources: pages.map((p) => p.url), enrichment };
 }

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SettingsProvider, useSettings } from "@/lib/store";
-import type { ProgressEvent, Report, StreamEvent } from "@/lib/types";
+import type { ChatMessage, ProgressEvent, Report, StreamEvent } from "@/lib/types";
 import Sidebar from "@/components/Sidebar";
 import Settings from "@/components/Settings";
 import Pipeline from "@/components/Pipeline";
@@ -16,6 +16,9 @@ type Run = {
   input: string;
   events: ProgressEvent[];
   report?: Report;
+  context?: string;
+  chat: ChatMessage[];
+  chatStreaming: boolean;
   error?: string;
   running: boolean;
   discord: DiscordState;
@@ -31,7 +34,11 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const busy = runs.some((r) => r.running);
+
+  const lastRun = runs[runs.length - 1];
+  const busy = runs.some((r) => r.running) || !!lastRun?.chatStreaming;
+  // Once the latest run has a report, the input becomes a follow-up chat box.
+  const chatMode = !!lastRun?.report && !lastRun.running;
 
   const scrollToEnd = useCallback(() => {
     requestAnimationFrame(() =>
@@ -93,7 +100,10 @@ function App() {
       return;
     }
     const id = crypto.randomUUID();
-    setRuns((prev) => [...prev, { id, input: q, events: [], running: true, discord: "idle" }]);
+    setRuns((prev) => [
+      ...prev,
+      { id, input: q, events: [], chat: [], chatStreaming: false, running: true, discord: "idle" },
+    ]);
     setInput("");
 
     try {
@@ -131,6 +141,8 @@ function App() {
           } else if (evt.type === "report") {
             patchRun(id, { report: evt.report, running: false });
             if (hasDiscord) sendDiscord(id, evt.report);
+          } else if (evt.type === "context") {
+            patchRun(id, { context: evt.context });
           } else if (evt.type === "error") {
             patchRun(id, { error: evt.message, running: false });
           }
@@ -141,6 +153,79 @@ function App() {
       patchRun(id, { error: err instanceof Error ? err.message : "Research failed", running: false });
     }
   };
+
+  const sendChat = async (question: string) => {
+    const q = question.trim();
+    if (!q || busy || !lastRun?.report) return;
+    const id = lastRun.id;
+    const history = lastRun.chat;
+    patchRun(id, (r) => ({
+      chat: [...r.chat, { role: "user", content: q }, { role: "assistant", content: "" }],
+      chatStreaming: true,
+    }));
+    setInput("");
+    scrollToEnd();
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: q,
+          context: lastRun.context,
+          company: lastRun.report.company.name,
+          history,
+          settings,
+        }),
+      });
+      if (!res.body) throw new Error("No response stream");
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      const appendDelta = (delta: string) =>
+        patchRun(id, (r) => {
+          const chat = [...r.chat];
+          const last = chat[chat.length - 1];
+          chat[chat.length - 1] = { role: "assistant", content: last.content + delta };
+          return { chat };
+        });
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const parts = buf.split("\n\n");
+        buf = parts.pop() || "";
+        for (const part of parts) {
+          const line = part.trim();
+          if (!line.startsWith("data:")) continue;
+          const data = line.slice(5).trim();
+          if (!data) continue;
+          try {
+            const evt = JSON.parse(data);
+            if (evt.type === "delta") {
+              appendDelta(evt.text);
+              scrollToEnd();
+            } else if (evt.type === "error") {
+              appendDelta(`⚠️ ${evt.message}`);
+            }
+          } catch {
+            // ignore partial
+          }
+        }
+      }
+    } catch (err) {
+      patchRun(id, (r) => {
+        const chat = [...r.chat];
+        chat[chat.length - 1] = { role: "assistant", content: `⚠️ ${err instanceof Error ? err.message : "Chat failed"}` };
+        return { chat };
+      });
+    } finally {
+      patchRun(id, { chatStreaming: false });
+    }
+  };
+
+  const onSubmit = () => (chatMode ? sendChat(input) : runResearch(input));
 
   const empty = runs.length === 0;
 
@@ -202,11 +287,14 @@ function App() {
                         report={run.report}
                         onDownload={() => downloadPdf(run.report!)}
                         onDiscord={() => sendDiscord(run.id, run.report!)}
+                        onRegenerate={() => runResearch(run.input)}
                         discordState={run.discord}
                         discordEnabled={hasDiscord}
                         discordError={run.discordError}
+                        isNew={run.id === lastRun?.id}
                       />
                     )}
+                    {run.chat.length > 0 && <ChatThread messages={run.chat} streaming={run.chatStreaming} />}
                     {run.error && (
                       <div
                         className="animate-fadeup type-body rounded-lg border border-hairline px-5 py-4"
@@ -235,7 +323,7 @@ function App() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              runResearch(input);
+              onSubmit();
             }}
             className="mx-auto flex h-11 w-full max-w-3xl items-center gap-2 rounded-pill border border-hairline bg-canvas px-4 focus-within:border-primary"
           >
@@ -246,7 +334,11 @@ function App() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               disabled={busy}
-              placeholder="Enter a company name or website URL…"
+              placeholder={
+                chatMode
+                  ? `Ask a follow-up about ${lastRun.report!.company.name}…`
+                  : "Enter a company name or website URL…"
+              }
               className="type-body min-w-0 flex-1 bg-transparent text-ink placeholder:text-ink-muted-48 focus:outline-none disabled:opacity-60"
             />
             <button
@@ -256,16 +348,39 @@ function App() {
             >
               {busy ? "…" : (
                 <>
-                  Research <IconArrow width={14} height={14} />
+                  {chatMode ? "Ask" : "Research"} <IconArrow width={14} height={14} />
                 </>
               )}
             </button>
           </form>
           <p className="type-fine-print mx-auto mt-2.5 max-w-3xl text-center text-ink-muted-48">
-            {hasAI ? "Ready" : "Add your OpenRouter key in Settings to begin"} · No data stored
+            {chatMode ? "Ask anything about this company · New research to start over" : hasAI ? "Ready" : "Add your OpenRouter key in Settings to begin"} · No data stored
           </p>
         </div>
       </main>
+    </div>
+  );
+}
+
+function ChatThread({ messages, streaming }: { messages: ChatMessage[]; streaming: boolean }) {
+  return (
+    <div className="space-y-4">
+      {messages.map((m, i) => {
+        const isLast = i === messages.length - 1;
+        if (m.role === "user") {
+          return (
+            <div key={i} className="flex justify-end">
+              <div className="type-body max-w-[85%] rounded-lg bg-parchment px-4 py-2.5 text-ink">{m.content}</div>
+            </div>
+          );
+        }
+        return (
+          <div key={i} className="type-body max-w-[92%] whitespace-pre-wrap text-ink-muted-80">
+            {m.content || (streaming && isLast ? "" : "")}
+            {streaming && isLast && <span className="ml-0.5 inline-block h-4 w-[2px] animate-pulse bg-primary align-middle" />}
+          </div>
+        );
+      })}
     </div>
   );
 }

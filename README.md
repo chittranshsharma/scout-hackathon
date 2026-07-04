@@ -21,9 +21,14 @@ Built for the Relu Consultancy AI & Automation hackathon.
 | **PDF** | Server-side `@react-pdf/renderer` — branded, one-click download |
 | **Discord (bonus)** | Settings for bot token / channel ID / applicant name+email; auto-sends report + PDF after generation |
 
+### Standout features (bonus)
+- **Conversational follow-up chat** — after the report, keep asking: *"how do they make money?"*, *"compare them to Competitor X"*. Answers stream token-by-token, grounded in the crawled + searched context (`/api/chat`). A true ChatGPT-style assistant, not a one-shot form.
+- **Deterministic enrichment** — extracts the company **logo** (validated Clearbit → favicon fallback), **brand color** (theme-color → tints the report + PDF), **tech-stack fingerprint** (Next.js/React/Shopify/HubSpot/GA/Stripe/…), and **social profiles** straight from the homepage. Shown in the dossier and the PDF.
+- **Polish** — typewriter reveal on the AI summary, numbered source citations, copy-as-Markdown, one-click regenerate.
+
 ### Engineering touches
-- **Server-Sent Events** stream live progress (resolve → crawl *N/M* → search → analyze).
-- **Graceful degradation**: Serper down → crawl-only; crawl blocked → search snippets; both fail → name-only with a low-confidence note; Discord failure never breaks the report.
+- **Server-Sent Events** stream live progress (resolve → crawl *N/M* → search → analyze) and chat tokens.
+- **Graceful degradation**: Serper down → crawl-only; crawl blocked → search snippets; both fail → name-only with a low-confidence note; model rejects JSON mode → retry without it; Discord failure never breaks the report.
 - **No secrets in the client**: keys live in in-memory React context, sent per-request, used server-side only, never logged, never persisted. `.env` fallback for baked-in deploy keys.
 - **No database, no auth** (per spec) — nothing is stored.
 
