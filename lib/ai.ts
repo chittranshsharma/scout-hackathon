@@ -62,7 +62,7 @@ Produce the JSON now.`;
 }
 
 type ORResponse = {
-  choices?: { message?: { content?: string } }[];
+  choices?: { message?: { content?: string; reasoning?: string } }[];
   error?: { message?: string };
 };
 
@@ -102,18 +102,33 @@ async function callOpenRouter(
     }
     throw new Error(`OpenRouter error: ${msg}`);
   }
-  const content = data.choices?.[0]?.message?.content;
+  const m = data.choices?.[0]?.message;
+  // Reasoning models may leave `content` empty and put text in `reasoning`.
+  const content = m?.content || m?.reasoning || "";
   if (!content) throw new Error("OpenRouter returned empty response");
   return content;
 }
 
 function parseJson(raw: string): Record<string, unknown> {
-  // Strip markdown fences / stray text; grab the outermost {...}.
-  const cleaned = raw.replace(/```json/gi, "").replace(/```/g, "").trim();
+  // Strip chain-of-thought / harmony tags / code fences some models emit.
+  const cleaned = raw
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<\|[^|]*\|>/g, "")
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .trim();
   const start = cleaned.indexOf("{");
   const end = cleaned.lastIndexOf("}");
   if (start === -1 || end === -1) throw new Error("No JSON object found");
-  return JSON.parse(cleaned.slice(start, end + 1));
+  // Try progressively shorter tails in case of trailing junk after the object.
+  const candidate = cleaned.slice(start, end + 1);
+  try {
+    return JSON.parse(candidate);
+  } catch {
+    // Recover from trailing commas / minor issues.
+    const repaired = candidate.replace(/,(\s*[}\]])/g, "$1");
+    return JSON.parse(repaired);
+  }
 }
 
 function toStringArray(v: unknown): string[] {
@@ -136,16 +151,31 @@ export async function analyzeCompany(
   try {
     parsed = parseJson(await callOpenRouter(messages, model, key));
   } catch {
-    // one repair retry: ask model to return strict JSON only
-    const repair = [
-      ...messages,
-      {
-        role: "user",
-        content:
-          "Your previous reply was not valid JSON. Respond again with ONLY the JSON object, no prose, no markdown.",
-      },
-    ];
-    parsed = parseJson(await callOpenRouter(repair, model, key));
+    try {
+      // Repair retry: force strict JSON only.
+      const repair = [
+        ...messages,
+        {
+          role: "user",
+          content:
+            "Your previous reply was not valid JSON. Output ONLY the JSON object — start with { and end with }. No prose, no markdown, no explanation.",
+        },
+      ];
+      parsed = parseJson(await callOpenRouter(repair, model, key));
+    } catch {
+      // Final safety net: never hard-fail. Return a degraded report built from
+      // the raw crawl/search text so the user still gets a usable dossier.
+      const firstText = input.crawledPages[0]?.text || input.searchSnippets.join(" ");
+      parsed = {
+        name: input.name,
+        summary: firstText
+          ? firstText.slice(0, 400).trim()
+          : "AI analysis unavailable for this model — try another model from Settings or the Compare-model control.",
+        products: [],
+        painPoints: [],
+        competitors: [],
+      };
+    }
   }
 
   const competitors = Array.isArray(parsed.competitors)
