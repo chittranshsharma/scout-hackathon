@@ -70,7 +70,17 @@ async function callOpenRouter(
   messages: { role: string; content: string }[],
   model: string,
   key: string,
+  useJsonMode = true,
 ): Promise<string> {
+  const body: Record<string, unknown> = {
+    model,
+    messages,
+    temperature: 0.4,
+    max_tokens: 2000,
+  };
+  // Not every free model supports structured-output mode; we retry without it.
+  if (useJsonMode) body.response_format = { type: "json_object" };
+
   const res = await fetch(OPENROUTER_URL, {
     method: "POST",
     headers: {
@@ -79,19 +89,18 @@ async function callOpenRouter(
       "HTTP-Referer": "https://company-research-assistant.vercel.app",
       "X-Title": "AI Company Research Assistant",
     },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: 0.4,
-      max_tokens: 2000,
-      response_format: { type: "json_object" },
-    }),
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(60000),
   });
 
   const data: ORResponse = await res.json();
   if (!res.ok || data.error) {
-    throw new Error(`OpenRouter error: ${data.error?.message || res.status}`);
+    const msg = data.error?.message || `HTTP ${res.status}`;
+    // A model that rejects response_format → retry once without JSON mode.
+    if (useJsonMode && /response_format|json|not support|invalid/i.test(msg)) {
+      return callOpenRouter(messages, model, key, false);
+    }
+    throw new Error(`OpenRouter error: ${msg}`);
   }
   const content = data.choices?.[0]?.message?.content;
   if (!content) throw new Error("OpenRouter returned empty response");
