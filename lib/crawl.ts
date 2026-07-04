@@ -8,6 +8,7 @@ export type Enrichment = {
   socials: Social[];
   // Company name as the site itself declares it (og:site_name / <title>).
   siteName?: string;
+  sitemap?: { url: string; status: "crawled" | "skipped" | "failed"; score: number }[];
 };
 export type CrawlResult = { pages: CrawledPage[]; sources: string[]; enrichment: Enrichment };
 
@@ -214,7 +215,7 @@ async function fetchDisallowed(origin: string): Promise<string[]> {
   }
 }
 
-function discoverLinks($: cheerio.CheerioAPI, origin: string, disallowed: string[] = []): string[] {
+function discoverLinks($: cheerio.CheerioAPI, origin: string, disallowed: string[] = []): { url: string; score: number }[] {
   const scored: { url: string; score: number }[] = [];
   const seen = new Set<string>();
 
@@ -250,7 +251,7 @@ function discoverLinks($: cheerio.CheerioAPI, origin: string, disallowed: string
     if (score > 0) scored.push({ url: clean, score: score - depth * 0.5 });
   });
 
-  return scored.sort((a, b) => b.score - a.score).map((s) => s.url);
+  return scored.sort((a, b) => b.score - a.score);
 }
 
 // Crawl a site starting from homepage. onPage fires per fetched page for progress.
@@ -266,7 +267,7 @@ export async function crawlSite(
 
   // Fetch robots.txt + homepage together.
   const [disallowed, home] = await Promise.all([fetchDisallowed(startOrigin), fetchPage(startUrl)]);
-  let queue: string[] = [];
+  let queue: { url: string; score: number }[] = [];
   // Scope everything to the FINAL post-redirect origin (fixes www/http drift).
   let origin = startOrigin;
   if (home) {
@@ -281,31 +282,53 @@ export async function crawlSite(
       contentHashes.add(text.slice(0, 200));
     }
     queue = discoverLinks($, origin, disallowed)
-      .filter((u) => u !== homeKey)
-      .slice(0, MAX_PAGES - 1);
+      .filter((u) => u.url !== homeKey)
+      .slice(0, 20); // Keep top 20 for sitemap visualization
   }
 
-  const total = Math.min(MAX_PAGES, queue.length + 1);
+  const crawlTargetCount = Math.min(MAX_PAGES - 1, queue.length);
+  const targetQueue = queue.slice(0, crawlTargetCount).map((q) => q.url);
+  const skippedQueue = queue.slice(crawlTargetCount);
+
+  const total = targetQueue.length + 1;
   onPage?.(pages.length, total, startUrl);
 
+  const sitemap: NonNullable<Enrichment["sitemap"]> = home ? [{ url: home.finalUrl, status: "crawled", score: 100 }] : [];
+
   // 2. internal pages — fetch in parallel batches (bounded concurrency).
-  for (let i = 0; i < queue.length && pages.length < MAX_PAGES; i += CONCURRENCY) {
-    const batch = queue.slice(i, i + CONCURRENCY);
+  for (let i = 0; i < targetQueue.length && pages.length < MAX_PAGES; i += CONCURRENCY) {
+    const batch = targetQueue.slice(i, i + CONCURRENCY);
     const results = await Promise.allSettled(batch.map((u) => fetchPage(u)));
     for (let j = 0; j < results.length; j++) {
       if (pages.length >= MAX_PAGES) break;
       const r = results[j];
-      if (r.status !== "fulfilled" || !r.value) continue;
+      if (r.status !== "fulfilled" || !r.value) {
+        sitemap.push({ url: batch[j], status: "failed", score: queue.find(q => q.url === batch[j])?.score || 0 });
+        continue;
+      }
       const $ = cheerio.load(r.value.html);
       const { title, text } = extract($, globalSeen);
-      if (!text) continue;
+      if (!text) {
+        sitemap.push({ url: batch[j], status: "skipped", score: queue.find(q => q.url === batch[j])?.score || 0 });
+        continue;
+      }
       const hash = text.slice(0, 200);
-      if (contentHashes.has(hash)) continue; // dedupe near-identical pages
+      if (contentHashes.has(hash)) {
+        sitemap.push({ url: batch[j], status: "skipped", score: queue.find(q => q.url === batch[j])?.score || 0 });
+        continue; // dedupe near-identical pages
+      }
       contentHashes.add(hash);
       pages.push({ url: batch[j], title, text });
+      sitemap.push({ url: batch[j], status: "crawled", score: queue.find(q => q.url === batch[j])?.score || 0 });
       onPage?.(pages.length, total, batch[j]);
     }
   }
+
+  // Add remaining un-crawled pages to sitemap as skipped
+  for (const s of skippedQueue) {
+    sitemap.push({ url: s.url, status: "skipped", score: s.score });
+  }
+  enrichment.sitemap = sitemap;
 
   // Low-yield detection (JS-heavy SPA that cheerio can't render): the caller
   // still has Serper snippets to lean on, but log it for visibility.

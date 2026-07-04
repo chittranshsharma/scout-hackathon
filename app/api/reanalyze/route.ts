@@ -14,10 +14,11 @@ export async function POST(req: NextRequest) {
       context: string;
       settings: Settings;
     };
-    const key = settings?.openrouterKey || process.env.OPENROUTER_API_KEY;
+    const openrouterKey = settings?.openrouterKey || process.env.OPENROUTER_API_KEY;
+    const groqKey = settings?.groqKey || process.env.GROQ_API_KEY;
     const model = settings?.model || DEFAULT_MODEL;
 
-    if (!key) return NextResponse.json({ error: "OpenRouter API key missing." }, { status: 400 });
+    if (!openrouterKey && !groqKey) return NextResponse.json({ error: "API key missing." }, { status: 400 });
     if (!report?.company?.name || !context) {
       return NextResponse.json({ error: "Missing report context." }, { status: 400 });
     }
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
         knownPhone: report.company.phone,
         knownAddress: report.company.address,
       },
-      key,
+      { openrouterKey, groqKey },
       model,
       report.sources,
     );

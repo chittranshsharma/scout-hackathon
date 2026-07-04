@@ -264,25 +264,9 @@ function App() {
   const empty = runs.length === 0;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-canvas">
-      <Sidebar
-        open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        onNew={() => {
-          setRuns([]);
-          setSidebarOpen(false);
-        }}
-        onOpenSettings={() => {
-          setSettingsOpen(true);
-          setSidebarOpen(false);
-        }}
-        history={history}
-        onSelect={selectRun}
-      />
-      <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-
+    <div className="flex h-screen overflow-hidden bg-parchment text-ink">
       <main className="relative flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between bg-parchment/80 px-4 py-3 backdrop-blur-xl md:px-6">
+        <header className="relative z-10 flex items-center justify-between bg-parchment/80 px-4 py-3 backdrop-blur-xl md:px-6">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen(true)}
@@ -302,7 +286,7 @@ function App() {
           </button>
         </header>
 
-        <div ref={scrollRef} className="flex-1 overflow-y-auto bg-canvas">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto">
           {empty ? (
             <Hero onPick={(v) => runResearch(v)} />
           ) : (
@@ -371,13 +355,13 @@ function App() {
           )}
         </div>
 
-        <div className="bg-parchment/80 px-4 py-4 backdrop-blur-xl md:px-6">
+        <div className="sticky bottom-0 z-10 border-t border-divider-soft bg-canvas/40 backdrop-blur-2xl saturate-150 p-4 sm:p-6 shadow-sm">
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              onSubmit();
+              if (input.trim()) chatMode ? sendChat(input) : runResearch(input);
             }}
-            className="mx-auto flex h-11 w-full max-w-3xl items-center gap-2 rounded-pill border border-hairline bg-canvas px-4 focus-within:border-primary"
+            className="mx-auto flex h-11 w-full max-w-3xl items-center gap-2 rounded-pill border border-hairline bg-canvas/50 px-4 focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/12 transition-all"
           >
             <span className="text-ink-muted-48">
               <IconScan width={17} height={17} />
@@ -396,9 +380,11 @@ function App() {
             <button
               type="submit"
               disabled={busy || !input.trim()}
-              className="press-scale type-caption-strong -mr-1 inline-flex items-center gap-1.5 rounded-pill bg-primary px-4 py-2 text-white transition-colors hover:bg-primary-focus disabled:opacity-40"
+              className="press-scale type-caption-strong -mr-1 inline-flex min-w-[100px] items-center justify-center gap-1.5 rounded-pill bg-primary px-4 py-2 text-white transition-colors hover:bg-primary-focus disabled:opacity-40"
             >
-              {busy ? "…" : (
+              {busy ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+              ) : (
                 <>
                   {chatMode ? "Ask" : "Research"} <IconArrow width={14} height={14} />
                 </>
@@ -410,6 +396,22 @@ function App() {
           </p>
         </div>
       </main>
+
+      <Sidebar
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        onNew={() => {
+          setRuns([]);
+          setSidebarOpen(false);
+        }}
+        onOpenSettings={() => {
+          setSettingsOpen(true);
+          setSidebarOpen(false);
+        }}
+        history={history}
+        onSelect={selectRun}
+      />
+      <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }
@@ -438,23 +440,37 @@ function ChatThread({ messages, streaming }: { messages: ChatMessage[]; streamin
 }
 
 function Hero({ onPick }: { onPick: (v: string) => void }) {
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const x = (e.clientX / window.innerWidth - 0.5) * 6;
+    const y = (e.clientY / window.innerHeight - 0.5) * 6;
+    setMousePos({ x, y });
+  };
+
   return (
-    <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col items-center justify-center px-6 py-16 text-center">
-      <h1 className="type-hero text-ink">
+    <div onMouseMove={handleMouseMove} className="relative mx-auto flex min-h-full w-full max-w-2xl flex-col items-center justify-center px-6 py-16 text-center overflow-visible">
+      <div className="absolute inset-0 pointer-events-none opacity-[0.15] bg-[radial-gradient(var(--color-ink)_1px,transparent_1px)] [background-size:24px_24px]" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/10 blur-[100px] rounded-full pointer-events-none" />
+      
+      <h1 
+        className="type-hero text-ink animate-fadeup"
+        style={{ transform: `translate(${-mousePos.x}px, ${-mousePos.y}px)`, willChange: "transform" }}
+      >
         Research any company
         <br />
         in seconds.
       </h1>
-      <p className="type-lead mt-5 max-w-xl text-ink-muted-80">
+      <p className="type-lead mt-5 max-w-xl text-ink-muted-80 animate-fadeup" style={{ animationDelay: "100ms" }}>
         Enter a company name or website. Scout crawls the site, searches public
         sources, and reasons over it all to build an intelligence dossier.
       </p>
-      <div className="mt-9 flex flex-wrap items-center justify-center gap-2">
+      <div className="mt-9 flex flex-wrap items-center justify-center gap-2 animate-fadeup" style={{ animationDelay: "200ms" }}>
         {EXAMPLES.map((e) => (
           <button
             key={e}
             onClick={() => onPick(e)}
-            className="press-scale type-caption rounded-md border-[3px] border-divider-soft bg-pearl px-3.5 py-2 text-ink-muted-80 transition-colors hover:border-primary/20"
+            className="press-scale type-caption rounded-md border-[3px] border-canvas bg-canvas shadow-sm px-3.5 py-2 text-ink-muted-80 transition-all duration-200 hover:-translate-y-[2px] hover:scale-[1.02] hover:border-primary/20"
           >
             {e}
           </button>

@@ -35,16 +35,18 @@ export default function Sidebar({
         className={`fixed inset-0 z-30 bg-black/50 md:hidden ${open ? "block" : "hidden"}`}
       />
       <aside
-        className={`fixed z-40 flex h-full w-[264px] flex-col overflow-y-auto bg-tile-1 transition-transform duration-300 md:static md:z-0 md:translate-x-0 ${
+        className={`fixed left-0 top-0 z-40 flex h-full w-[264px] flex-col overflow-y-auto bg-gradient-to-b from-[var(--color-tile-2)] to-black transition-transform duration-300 md:static md:z-0 md:translate-x-0 md:order-first ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         {/* Brand */}
         <div className="flex items-center justify-between px-5 py-5">
           <div className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white">
-              <IconScan width={18} height={18} />
-            </span>
+            <img
+              src="/logo.png"
+              alt="Scout Logo"
+              className="h-8 w-8 rounded-[6px] object-cover"
+            />
             <span className="type-tagline text-white">Scout</span>
           </div>
           <button onClick={onClose} className="rounded-sm p-1 text-body-muted hover:text-white md:hidden" aria-label="Close menu">
@@ -56,7 +58,8 @@ export default function Sidebar({
         <div className="px-4">
           <button
             onClick={onNew}
-            className="press-scale flex w-full items-center justify-center gap-2 rounded-pill bg-primary px-[22px] py-[11px] text-white transition-colors hover:bg-primary-focus"
+            className="press-scale flex w-full items-center justify-center gap-2 rounded-pill px-[22px] py-[11px] text-white transition-all hover:brightness-110 shadow-sm"
+            style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.25), rgba(255,255,255,0) 50%), var(--color-primary)" }}
           >
             <IconPlus width={16} height={16} />
             <span className="type-body">New research</span>
@@ -72,10 +75,11 @@ export default function Sidebar({
                 <li key={h.id}>
                   <button
                     onClick={() => onSelect(h.id)}
-                    className="press-scale type-caption block w-full truncate rounded-sm px-2 py-1.5 text-left text-body-muted transition-colors hover:bg-white/[0.06] hover:text-white"
+                    className="group relative press-scale type-caption block w-full truncate rounded-sm px-3 py-1.5 text-left text-body-muted transition-colors hover:text-white hover:bg-white/[0.04]"
                     title={h.label}
                   >
-                    {h.label}
+                    <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-primary opacity-0 transition-all group-hover:opacity-100" />
+                    <span className="transition-transform group-hover:translate-x-0.5 inline-block">{h.label}</span>
                   </button>
                 </li>
               ))}

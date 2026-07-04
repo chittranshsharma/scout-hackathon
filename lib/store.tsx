@@ -24,7 +24,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const value: Ctx = {
     settings,
     update,
-    hasAI: !!settings.openrouterKey,
+    hasAI: !!settings.openrouterKey || !!settings.groqKey,
     hasSearch: !!settings.serperKey,
     hasDiscord: !!(settings.discordBotToken && settings.discordChannelId),
   };

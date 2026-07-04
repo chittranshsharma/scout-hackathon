@@ -41,11 +41,11 @@ export default function Settings({ open, onClose }: { open: boolean; onClose: ()
       <div
         onClick={onClose}
         className={`fixed inset-0 z-40 bg-black/30 transition-opacity ${
-          open ? "opacity-100" : "pointer-events-none opacity-0"
+          open ? "block opacity-100" : "hidden pointer-events-none opacity-0"
         }`}
       />
       <aside
-        className={`fixed right-0 top-0 z-50 flex h-full w-full max-w-md flex-col border-l border-hairline bg-parchment/85 backdrop-blur-xl transition-transform duration-300 ${
+        className={`fixed right-0 top-0 z-50 flex h-full w-full max-w-md flex-col border-l border-hairline bg-canvas/40 backdrop-blur-2xl saturate-150 transition-transform duration-300 ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
         role="dialog"
@@ -82,6 +82,24 @@ export default function Settings({ open, onClose }: { open: boolean; onClose: ()
                   onChange={(e) => update({ openrouterKey: e.target.value })}
                 />
               </Labeled>
+
+              <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <h3 className="type-body-strong text-primary">Extra Feature: Groq Fallback</h3>
+                </div>
+                <p className="type-caption text-ink-muted-80 mb-3">
+                  Exhausted your OpenRouter credits? Add a Groq API key to use their lightning-fast Llama models for free. Get one at <a href="https://console.groq.com/keys" target="_blank" className="underline text-primary">console.groq.com/keys</a>.
+                </p>
+                <Labeled label="Groq API Key" hint="Optional, used as a fallback or explicit provider.">
+                  <input
+                    type="password"
+                    className={inputCls}
+                    placeholder="gsk_..."
+                    value={settings.groqKey || ""}
+                    onChange={(e) => update({ groqKey: e.target.value })}
+                  />
+                </Labeled>
+              </div>
 
               <div>
                 <span className="type-caption-strong mb-2.5 block text-ink-muted-80">AI Model</span>

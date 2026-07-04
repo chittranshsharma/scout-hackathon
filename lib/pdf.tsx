@@ -71,6 +71,21 @@ const s = StyleSheet.create({
   },
   compName: { width: "40%", fontFamily: "Helvetica-Bold" },
   compSite: { width: "60%", color: "#2563eb" },
+  matrixHeader: {
+    flexDirection: "row",
+    backgroundColor: C.chipBg,
+    paddingVertical: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: C.line,
+  },
+  matrixRow: {
+    flexDirection: "row",
+    paddingVertical: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: C.line,
+  },
+  matrixColName: { width: "25%", fontFamily: "Helvetica-Bold", paddingRight: 4 },
+  matrixCol: { width: "25%", paddingRight: 4, color: C.sub },
   link: { color: "#2563eb", textDecoration: "none" },
   footer: {
     position: "absolute",
@@ -152,7 +167,25 @@ function ReportDoc({ report }: { report: Report }) {
           </>
         ) : null}
 
-        {report.competitors.length ? (
+        {report.competitorMatrix && report.competitorMatrix.length ? (
+          <>
+            <Text style={[s.sectionTitle, { color: brandAccent, borderBottomColor: brandAccent }]}>Competitor Matrix</Text>
+            <View style={s.matrixHeader}>
+              <Text style={[s.matrixColName, { color: C.sub }]}>Competitor</Text>
+              <Text style={s.matrixCol}>Audience</Text>
+              <Text style={s.matrixCol}>Strength</Text>
+              <Text style={s.matrixCol}>Pricing</Text>
+            </View>
+            {report.competitorMatrix.map((comp, i) => (
+              <View key={i} style={s.matrixRow}>
+                <Text style={s.matrixColName}>{comp.name}</Text>
+                <Text style={s.matrixCol}>{comp.audience}</Text>
+                <Text style={s.matrixCol}>{comp.coreStrength}</Text>
+                <Text style={s.matrixCol}>{comp.pricingModel}</Text>
+              </View>
+            ))}
+          </>
+        ) : report.competitors.length ? (
           <>
             <Text style={[s.sectionTitle, { color: brandAccent, borderBottomColor: brandAccent }]}>Competitors</Text>
             {report.competitors.map((comp, i) => (

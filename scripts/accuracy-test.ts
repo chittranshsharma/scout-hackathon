@@ -53,7 +53,7 @@ async function runOne(input: string) {
       knownPhone: phone,
       knownAddress: address,
     },
-    OR!,
+    { openrouterKey: OR! },
     DEFAULT_MODEL,
     crawl.sources,
   );
@@ -76,7 +76,7 @@ async function testModels() {
     try {
       const rep = await analyzeCompany(
         { name: "Stripe", website: "https://stripe.com", crawledPages: [{ url: "https://stripe.com", title: "Stripe", text: "Stripe builds economic infrastructure for the internet. Payments, billing, and financial APIs for businesses." }], searchSnippets: [], competitorSnippets: [] },
-        OR!,
+        { openrouterKey: OR!, groqKey: process.env.GROQ_API_KEY },
         m.id,
       );
       const ok = rep.company.summary.length > 0 && rep.model === m.id;

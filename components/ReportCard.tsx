@@ -17,10 +17,16 @@ function ConfidenceBadge({ tier }: { tier?: ConfidenceTier }) {
   if (!tier) return null;
   return (
     <span className="type-fine-print inline-flex items-center gap-1 rounded-pill border border-hairline px-2 py-0.5 text-ink-muted-48">
-      <span
-        className="h-1.5 w-1.5 rounded-full"
-        style={{ background: tier === "high" ? "#1d1d1f" : tier === "moderate" ? "#7a7a7a" : "#c7c7cc" }}
-      />
+      <span className="relative flex h-1.5 w-1.5 items-center justify-center">
+        <span
+          className="absolute inline-flex h-full w-full rounded-full animate-ping opacity-60"
+          style={{ background: tier === "high" ? "#1d1d1f" : tier === "moderate" ? "#7a7a7a" : "#c7c7cc" }}
+        />
+        <span
+          className="relative inline-flex h-1.5 w-1.5 rounded-full"
+          style={{ background: tier === "high" ? "#1d1d1f" : tier === "moderate" ? "#7a7a7a" : "#c7c7cc" }}
+        />
+      </span>
       {CONF_LABEL[tier]}
     </span>
   );
@@ -82,7 +88,8 @@ function Section({
   tier?: ConfidenceTier;
 }) {
   return (
-    <section className="border-t border-divider-soft px-6 py-5 first:border-t-0">
+    <section className="group relative px-6 py-5">
+      <div className="absolute top-0 left-0 right-0 h-[1px] bg-[linear-gradient(90deg,transparent,var(--color-hairline),transparent)] group-first:hidden" />
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <h3 className="type-caption-strong text-ink-muted-48">{label}</h3>
@@ -131,6 +138,7 @@ export default function ReportCard({
 
   // Outreach email draft — cached in component state per report.
   const [email, setEmail] = useState<OutreachEmail | null>(null);
+  const [editedEmailBody, setEditedEmailBody] = useState("");
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [emailCopied, setEmailCopied] = useState(false);
@@ -147,6 +155,7 @@ export default function ReportCard({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setEmail(data);
+      setEditedEmailBody(data.body);
     } catch (err) {
       setEmailError(err instanceof Error ? err.message : "Draft failed");
     } finally {
@@ -192,6 +201,23 @@ export default function ReportCard({
     URL.revokeObjectURL(url);
   };
   const slug = c.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+
+  const downloadCsv = () => {
+    const esc = (s?: string) => `"${(s || "").replace(/"/g, '""')}"`;
+    const comps = report.competitors.map((x) => x.name).join(", ");
+    const headers = ["Name", "Website", "Phone", "Address", "Summary", "Products", "PainPoints", "Competitors"];
+    const row = [
+      c.name,
+      c.website,
+      c.phone,
+      c.address,
+      c.summary,
+      c.products.join(", "),
+      c.painPoints.join(" | "),
+      comps,
+    ].map(esc);
+    download(`${headers.join(",")}\n${row.join(",")}`, `${slug}-lead.csv`, "text/csv");
+  };
 
   const handleDownload = async () => {
     setDownloading(true);
@@ -291,7 +317,32 @@ export default function ReportCard({
         </Section>
       )}
 
-      {report.competitors.length > 0 && (
+      {report.competitorMatrix && report.competitorMatrix.length > 0 ? (
+        <Section label="Competitor Matrix" tier={report.confidence?.competitors}>
+          <div className="overflow-x-auto rounded-lg border border-hairline bg-canvas">
+            <table className="w-full text-left border-collapse min-w-[600px]">
+              <thead>
+                <tr className="bg-parchment/40">
+                  <th className="px-4 py-3 type-fine-print text-ink-muted-48 font-normal border-b border-divider-soft">Competitor</th>
+                  <th className="px-4 py-3 type-fine-print text-ink-muted-48 font-normal border-b border-divider-soft">Target Audience</th>
+                  <th className="px-4 py-3 type-fine-print text-ink-muted-48 font-normal border-b border-divider-soft">Core Strength</th>
+                  <th className="px-4 py-3 type-fine-print text-ink-muted-48 font-normal border-b border-divider-soft">Pricing Model</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-divider-soft">
+                {report.competitorMatrix.map((comp, i) => (
+                  <tr key={i} className="hover:bg-[var(--color-parchment)] transition-colors">
+                    <td className="px-4 py-3 type-body-strong text-ink whitespace-nowrap">{comp.name}</td>
+                    <td className={`px-4 py-3 type-caption ${comp.audience === "Not publicly disclosed" ? "text-ink-muted-48 italic" : "text-ink-muted-80"}`}>{comp.audience}</td>
+                    <td className={`px-4 py-3 type-caption ${comp.coreStrength === "Not publicly disclosed" ? "text-ink-muted-48 italic" : "text-ink-muted-80"}`}>{comp.coreStrength}</td>
+                    <td className={`px-4 py-3 type-caption ${comp.pricingModel === "Not publicly disclosed" ? "text-ink-muted-48 italic" : "text-ink-muted-80"}`}>{comp.pricingModel}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Section>
+      ) : report.competitors.length > 0 && (
         <Section label="Competitors" tier={report.confidence?.competitors}>
           <div className="divide-y divide-divider-soft">
             {report.competitors.map((comp, i) => (
@@ -325,8 +376,7 @@ export default function ReportCard({
                 href={soc.url}
                 target="_blank"
                 rel="noreferrer noopener"
-                className="type-caption rounded-pill border border-hairline px-3 py-1.5 hover:underline"
-                style={{ color: accent }}
+                className="type-caption rounded-pill border border-hairline px-3 py-1.5 hover:underline text-primary"
               >
                 {soc.type}
               </a>
@@ -377,14 +427,18 @@ export default function ReportCard({
             </div>
 
             {/* Email Body */}
-            <div className="bg-canvas px-5 py-6 min-h-[160px]">
-              <div className="type-body whitespace-pre-wrap text-ink-muted-80 leading-relaxed font-sans">{email.body}</div>
+            <div className="bg-canvas px-5 py-6 min-h-[160px] flex flex-col">
+              <textarea
+                value={editedEmailBody}
+                onChange={(e) => setEditedEmailBody(e.target.value)}
+                className="type-body text-ink-muted-80 leading-relaxed font-sans bg-transparent border-none resize-y outline-none min-h-[160px] w-full"
+              />
             </div>
 
             {/* Toolbar Action Bar */}
             <div className="flex flex-wrap items-center justify-between border-t border-divider-soft bg-parchment/40 px-4 py-3 gap-2">
               <a
-                href={`mailto:?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`}
+                href={`mailto:?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(editedEmailBody)}`}
                 className="press-scale type-caption-strong inline-flex items-center justify-center gap-1.5 rounded bg-primary px-4 py-2 text-white hover:bg-primary-focus transition-colors"
               >
                 Draft in Mail
@@ -392,7 +446,7 @@ export default function ReportCard({
               <div className="flex gap-2">
                 <button
                   onClick={async () => {
-                    await navigator.clipboard.writeText(`Subject: ${email.subject}\n\n${email.body}`);
+                    await navigator.clipboard.writeText(`Subject: ${email.subject}\n\n${editedEmailBody}`);
                     setEmailCopied(true);
                     setTimeout(() => setEmailCopied(false), 1600);
                   }}
@@ -438,6 +492,34 @@ export default function ReportCard({
         </Section>
       )}
 
+      {report.sitemap && report.sitemap.length > 0 && (
+        <Section label={`Crawl Diagnostics (${report.sitemap.length})`}>
+          <div className="flex flex-wrap gap-2">
+            {report.sitemap.map((s, i) => (
+              <a
+                key={i}
+                href={s.url}
+                target="_blank"
+                rel="noreferrer noopener"
+                className={`type-caption rounded border px-2 py-1 flex items-center gap-1.5 hover:bg-parchment/50 truncate max-w-full ${
+                  s.status === "crawled"
+                    ? "border-green-500/30 text-green-700 bg-green-50/10"
+                    : s.status === "skipped"
+                      ? "border-hairline text-ink-muted-48"
+                      : "border-red-500/30 text-red-700 bg-red-50/10"
+                }`}
+                title={`Score: ${s.score}`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${
+                  s.status === "crawled" ? "bg-green-500" : s.status === "skipped" ? "bg-ink-muted-48" : "bg-red-500"
+                }`} />
+                <span className="truncate">{s.url.replace(/^https?:\/\//, "").replace(/\/$/, "")}</span>
+              </a>
+            ))}
+          </div>
+        </Section>
+      )}
+
       {/* Actions */}
       <footer className="flex flex-col gap-3 border-t border-divider-soft px-6 py-5 sm:flex-row sm:items-center">
         <button
@@ -466,23 +548,40 @@ export default function ReportCard({
           </button>
         )}
 
-        <div className="flex flex-wrap items-center gap-1 sm:ml-auto">
-          <button onClick={handleCopy} className="press-scale type-caption rounded-sm px-2.5 py-1.5 text-ink-muted-48 hover:text-ink">
+        <div className="flex items-center gap-1 sm:ml-auto">
+          <button
+            onClick={handleCopy}
+            title="Copy Markdown"
+            className="press-scale flex h-11 items-center justify-center gap-2 rounded-pill px-4 type-caption text-ink-muted-48 hover:bg-[var(--color-parchment)] hover:text-ink transition-colors"
+          >
             {copied ? "Copied" : "Copy"}
           </button>
           <button
             onClick={() => download(reportToMarkdown(report), `${slug}-report.md`, "text/markdown")}
-            className="press-scale type-caption rounded-sm px-2.5 py-1.5 text-ink-muted-48 hover:text-ink"
+            title="Download Markdown"
+            className="press-scale flex h-11 w-11 items-center justify-center rounded-pill type-caption text-ink-muted-48 hover:bg-[var(--color-parchment)] hover:text-ink transition-colors"
           >
-            .md
+            MD
           </button>
           <button
             onClick={() => download(JSON.stringify(report, null, 2), `${slug}-report.json`, "application/json")}
-            className="press-scale type-caption rounded-sm px-2.5 py-1.5 text-ink-muted-48 hover:text-ink"
+            title="Download JSON"
+            className="press-scale flex h-11 w-11 items-center justify-center rounded-pill type-caption font-mono text-ink-muted-48 hover:bg-[var(--color-parchment)] hover:text-ink transition-colors"
           >
-            .json
+            {"{}"}
           </button>
-          <button onClick={onRegenerate} className="press-scale type-caption rounded-sm px-2.5 py-1.5 text-ink-muted-48 hover:text-ink">
+          <button
+            onClick={downloadCsv}
+            title="Download CSV"
+            className="press-scale flex h-11 w-11 items-center justify-center rounded-pill type-caption text-ink-muted-48 hover:bg-[var(--color-parchment)] hover:text-ink transition-colors"
+          >
+            CSV
+          </button>
+          <button
+            onClick={onRegenerate}
+            title="Regenerate Report"
+            className="press-scale flex h-11 items-center justify-center rounded-pill px-4 type-caption text-ink-muted-48 hover:bg-[var(--color-parchment)] hover:text-ink transition-colors ml-2"
+          >
             Regenerate
           </button>
         </div>

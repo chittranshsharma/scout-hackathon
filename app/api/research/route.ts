@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
   const settings = body.settings || {};
 
   const openrouterKey = settings.openrouterKey || process.env.OPENROUTER_API_KEY;
+  const groqKey = settings.groqKey || process.env.GROQ_API_KEY;
   const serperKey = settings.serperKey || process.env.SERPER_API_KEY;
   const model = settings.model || DEFAULT_MODEL;
 
@@ -29,8 +30,8 @@ export async function POST(req: NextRequest) {
 
       try {
         if (!input) throw new Error("No company name or URL provided.");
-        if (!openrouterKey)
-          throw new Error("OpenRouter API key missing. Add it in Config settings.");
+        if (!openrouterKey && !groqKey)
+          throw new Error("OpenRouter or Groq API key missing. Add one in Config settings.");
 
         // 1. Resolve
         progress("resolving", "Identifying company", looksLikeUrl(input) ? "Reading provided URL" : "Finding official website");
@@ -100,7 +101,7 @@ export async function POST(req: NextRequest) {
             knownPhone,
             knownAddress,
           },
-          openrouterKey,
+          { openrouterKey, groqKey },
           model,
           [...crawlSources, ...searchSources, ...resolved.sources],
         );
@@ -109,10 +110,11 @@ export async function POST(req: NextRequest) {
           `[timing] crawl+search=${tCrawlSearch - t0}ms ai=${tAI - tCrawlSearch}ms total=${tAI - t0}ms model=${report.model}`,
         );
 
-        // Attach deterministic enrichment (logo/brand/socials).
+        // Attach deterministic enrichment (logo/brand/socials/sitemap).
         report.logo = enrichment.logo;
         report.brandColor = enrichment.brandColor;
         report.socials = enrichment.socials;
+        report.sitemap = enrichment.sitemap;
 
         send({ type: "report", report });
 

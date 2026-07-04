@@ -13,12 +13,19 @@ export type Report = {
     summary: string;
   };
   competitors: Competitor[];
+  competitorMatrix?: {
+    name: string;
+    audience: string;
+    coreStrength: string;
+    pricingModel: string;
+  }[];
   sources: string[];
   model: string;
   // Deterministic enrichment extracted during crawl (not AI-generated)
   logo?: string;
   brandColor?: string;
   socials?: Social[];
+  sitemap?: { url: string; status: "crawled" | "skipped" | "failed"; score: number }[];
   // Self-audit: how well each section is backed by real sources.
   confidence?: Record<string, ConfidenceTier>;
 };
@@ -32,6 +39,7 @@ export type ChatMessage = { role: "user" | "assistant"; content: string };
 
 export type Settings = {
   openrouterKey?: string;
+  groqKey?: string;
   model?: string;
   serperKey?: string;
   discordBotToken?: string;
@@ -75,4 +83,6 @@ export const MODEL_OPTIONS = [
   { id: "meta-llama/llama-3.2-3b-instruct:free", label: "Llama 3.2 3B (free, fastest)" },
   { id: "openai/gpt-oss-120b:free", label: "GPT-OSS 120B (free)" },
   { id: "nvidia/nemotron-3-super-120b-a12b:free", label: "Nemotron 3 Super 120B (free)" },
+  { id: "groq:openai/gpt-oss-120b", label: "GPT-OSS 120B (Groq Fast)" },
+  { id: "groq:qwen/qwen3.6-27b", label: "Qwen3.6 27B (Groq Fast)" },
 ];

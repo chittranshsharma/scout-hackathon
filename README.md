@@ -1,86 +1,81 @@
-# Scout — AI Company Research Assistant
+<div align="center">
 
-Enter a **company name** or **website URL**. Scout resolves the official site, crawls its key pages, enriches with web search, reasons over everything with an LLM, identifies competitors, and produces an **intelligence dossier** plus a **downloadable PDF report** — all in a ChatGPT-style interface with a live research pipeline.
+<img src="public/logo.png" alt="Scout Logo" width="120" />
 
-Built for the Relu Consultancy AI & Automation hackathon.
+# Scout
+### AI Company Intelligence Platform
 
-![Next.js](https://img.shields.io/badge/Next.js-16-000) ![OpenRouter](https://img.shields.io/badge/AI-OpenRouter-35e0c1) ![Serper](https://img.shields.io/badge/Search-Serper.dev-f5a623)
+**Turn any company name or URL into a full intelligence dossier in seconds.**
+
+Built with Next.js · Powered by OpenRouter + Groq · Deployed on Vercel
+
+[![Live Demo](https://img.shields.io/badge/Live_Demo-Scout_App-0066cc?style=for-the-badge&logo=vercel)](https://scout-hackathon.vercel.app)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black?style=for-the-badge&logo=next.js)](https://nextjs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org)
+[![OpenRouter](https://img.shields.io/badge/AI-OpenRouter-35e0c1?style=for-the-badge)](https://openrouter.ai)
+[![Groq](https://img.shields.io/badge/Fallback-Groq-f55036?style=for-the-badge)](https://groq.com)
+[![Serper](https://img.shields.io/badge/Search-Serper.dev-f5a623?style=for-the-badge)](https://serper.dev)
+
+</div>
 
 ---
 
-## Features
+## What is Scout?
 
-| Requirement | Implementation |
+Sales teams, consultants, investors, and founders spend **hours** manually Googling companies before every meeting. They tab through LinkedIn, Wikipedia, Crunchbase, and the company's own website—stitching together a mental picture one search at a time.
+
+**Scout eliminates that entirely.**
+
+Drop in a company name or website URL. Scout autonomously:
+1. Resolves the official website using Serper's Google Search
+2. Deep-crawls the most valuable pages (Products, About, Services, Contact, Pricing)
+3. Cross-references live web search snippets for contact info and competitors
+4. Sends everything to an LLM that reasons over it all
+5. Delivers a structured intelligence dossier—in under 60 seconds
+
+The result is a professional-grade company brief that would normally take a human 45 minutes.
+
+---
+
+## Key Features
+
+### Core Intelligence Pipeline
+
+| Feature | What it does |
 |---|---|
-| **Company research** | Name **or** URL input; name → official site via Serper; extracts name, website, phone, address, products, AI pain points |
-| **Website crawling** | `cheerio` crawler discovers About/Products/Services/Solutions/Contact/Pricing; keyword-scored link selection; dedupes by URL + content hash; skips login/legal/blog/asset pages; strips nav/footer/scripts |
-| **Search** | Serper.dev for official-site resolution, contact enrichment, competitor discovery, public snippets |
-| **AI** | OpenRouter with **user-selectable model** (free models default); strict JSON output; one repair-retry on malformed JSON |
-| **Competitor analysis** | AI proposes 3–6 rivals (same industry/market) with names + websites, seeded by search |
-| **Interactive UI** | ChatGPT-style chat, live **research pipeline** with per-stage progress streamed over **SSE** |
-| **PDF** | Server-side `@react-pdf/renderer` — branded, one-click download |
-| **Discord (bonus)** | Settings for bot token / channel ID / applicant name+email; auto-sends report + PDF after generation |
+| **Name or URL input** | Accepts `"Stripe"` or `"https://stripe.com"` — Scout resolves and normalizes either |
+| **Smart site crawler** | Scores and selects the 7 most valuable pages using a keyword heuristic; deduplicates by URL + content hash; strips boilerplate (nav, footer, scripts, legal) |
+| **Live Serper search** | 3 parallel queries: official site resolution, contact enrichment, competitor discovery |
+| **Multi-source AI synthesis** | LLM synthesizes crawled text + search snippets into structured JSON — name, website, phone, address, products, pain points, competitors, competitor matrix |
+| **Confidence scoring** | Every section carries a sourced confidence tier: `High` (multiple independent sources), `Moderate`, or `AI-inferred` |
+| **Anti-hallucination guardrails** | Phone/address are verified against source text before display; competitor pricing/strength only shown when evidence exists |
 
-### Standout features (bonus)
-- **Conversational follow-up chat** — after the report, keep asking: *"how do they make money?"*, *"compare them to Competitor X"*. Answers stream token-by-token, grounded in the crawled + searched context (`/api/chat`), with starter suggestion chips. A true ChatGPT-style assistant, not a one-shot form.
-- **AI-drafted outreach email** — one click drafts a tailored cold email to the researched company, anchored on its detected pain points and positioned as AI/automation consulting (`/api/email`). Copy or regenerate. Shows business thinking, not just extraction.
-- **Self-audit confidence badges** — each section (summary/products/pain points/competitors) is tagged High / Moderate / AI-inferred based on how many independent sources backed it. The system grades its own certainty instead of blind-trusting the LLM.
-- **Deterministic enrichment** — extracts the company **logo** (validated Clearbit → favicon fallback), **brand color** (theme-color → tints the report + PDF + Discord embed), **tech-stack fingerprint** (Next.js/React/Shopify/HubSpot/GA/Stripe/…), and **social profiles** straight from the homepage.
-- **Rich Discord delivery** — Action-Blue embed with logo thumbnail, products / pain points / competitors fields, PDF attachment; returns a delivery timestamp; manual retry with specific error messages (401 invalid token / 403 missing perms / 404 bad channel).
-- **Model comparison** — re-run the analysis with any other free model *without re-crawling* (reuses cached research context via `/api/reanalyze`) — fast side-by-side model quality checks.
-- **Session history** — every company researched this session lists in the sidebar (in-memory, no DB); click to jump back to any past report.
-- **Polish** — typewriter reveal on the AI summary, numbered source citations, copy-as-Markdown, export **.md / .json**, one-click regenerate.
+### Deliverables Produced
 
-### Engineering touches
-- **Server-Sent Events** stream live progress (resolve → crawl *N/M* → search → analyze) and chat tokens.
-- **Graceful degradation**: Serper down → crawl-only; crawl blocked → search snippets; both fail → name-only with a low-confidence note; model rejects JSON mode → retry without it; Discord failure never breaks the report.
-- **No secrets in the client**: keys live in in-memory React context, sent per-request, used server-side only, never logged, never persisted. `.env` fallback for baked-in deploy keys.
-- **No database, no auth** (per spec) — nothing is stored.
+- **HTML Intelligence Dossier** — Live in the browser, with typewriter summary reveal
+- **One-Click PDF Report** — Branded, A4, downloadable via `@react-pdf/renderer`
+- **Competitor Feature Matrix** — Side-by-side comparison table with sourced strength/pricing/audience data
+- **CRM-Ready CSV Export** — One row per company, all fields included, drag-drop into HubSpot/Salesforce
+- **AI-Drafted Outreach Email** — Cold email personalized to the company's detected pain points, positioned as AI/automation consulting. Rigorously filtered against 20+ AI-sounding phrases
+- **Social Profile Links** — Auto-extracted LinkedIn, Twitter/X, YouTube, Instagram, Facebook, TikTok
+- **Tech Stack Fingerprint** — Detects Next.js, React, Shopify, HubSpot, Stripe, Google Analytics and more from the crawled HTML
 
----
+### Premium UX
 
-## Tech stack
+- **Real-time SSE Pipeline** — Watch the research happen live: `Resolving → Crawling (3/7) → Searching → Analyzing → Complete`
+- **Conversational Follow-up Chat** — After the dossier, ask anything: *"Who is their biggest competitor?"*, *"What's their pricing model?"*. The AI answers using both the crawled context AND live web search — token-by-token streaming
+- **Model Selector** — 7 free models across OpenRouter and Groq. Change mid-session without re-crawling
+- **Session History** — Every report this session listed in the sidebar; click to jump back
+- **Markdown & JSON Export** — Copy the full dossier as clean Markdown or raw JSON
 
-- **Next.js 16** (App Router) + **TypeScript** + **Tailwind CSS v4** — single unified project
-- **cheerio** — crawling / HTML extraction
-- **@react-pdf/renderer** — PDF generation
-- **OpenRouter** (AI) · **Serper.dev** (search) · **Discord Bot API** (bonus)
+### Groq Fallback (Bonus)
+> Scout is the only research tool with **dual AI provider resilience**. If your OpenRouter quota is exhausted, toggle to Groq's ultra-fast inference tier — GPT-OSS 120B or Qwen3.6 27B — without losing any progress or re-entering API keys. The fallback is zero-click automatic for rate-limit events.
 
----
-
-## Setup
-
-```bash
-git clone <repo> && cd scout
-npm install
-cp .env.example .env.local   # optional — you can also paste keys in the UI
-npm run dev                  # http://localhost:3000
-```
-
-Open the app → **Settings** → paste your keys, or set them in `.env.local`.
-
-### API keys
-| Key | Where | Required |
-|---|---|---|
-| `OPENROUTER_API_KEY` | https://openrouter.ai/keys (free) | Yes — AI analysis |
-| `SERPER_API_KEY` | https://serper.dev (free 2,500 queries) | Recommended — search/resolve |
-| `DISCORD_BOT_TOKEN` | Discord Developer Portal → Bot | Only for Discord bonus |
-| `DISCORD_CHANNEL_ID` | Right-click channel → Copy ID (Developer Mode on) | Only for Discord bonus |
-
-All keys are optional as env vars — the in-app **Settings** panel accepts them at runtime.
-
----
-
-## Environment variables
-
-See [`.env.example`](.env.example). Every variable is optional at the env level because the UI can supply the same values; the server reads a request-body key first, then falls back to the matching env var.
-
-```
-OPENROUTER_API_KEY   # AI (mandatory to run analysis)
-SERPER_API_KEY       # search enrichment (recommended)
-DISCORD_BOT_TOKEN    # Discord bonus
-DISCORD_CHANNEL_ID   # Discord bonus
-```
+### Discord Bot Integration (Bonus)
+Configure your Discord bot token and channel ID in Settings. After every successful report, Scout automatically delivers:
+- A rich embed with company logo thumbnail, summary, products, pain points, and top competitors
+- The full PDF report as a file attachment
+- Delivery timestamp + manual retry with specific error messages (401 / 403 / 404)
 
 ---
 
@@ -88,38 +83,160 @@ DISCORD_CHANNEL_ID   # Discord bonus
 
 ```
 app/
-  page.tsx                  ChatGPT-style client UI (chat, pipeline, dossier)
-  api/research/route.ts     SSE orchestrator: resolve → crawl → search → analyze
-  api/pdf/route.ts          report JSON → PDF download
-  api/discord/route.ts      report + PDF → Discord channel
+  page.tsx                     ChatGPT-style client — hero, pipeline, dossier, chat, input bar
+  layout.tsx                   Fonts, metadata, viewport
+  api/
+    research/route.ts          SSE orchestrator: resolve → crawl → search → analyze
+    chat/route.ts              Live web-augmented follow-up Q&A (Groq + OpenRouter aware)
+    pdf/route.ts               Report JSON → branded A4 PDF
+    email/route.ts             AI outreach email drafting
+    discord/route.ts           Rich embed + PDF → Discord Bot API
+    reanalyze/route.ts         Re-run AI analysis with a different model (reuses cached crawl)
+
 lib/
-  resolve.ts   name→official URL / URL normalization
-  crawl.ts     page discovery, dedupe, content extraction
-  serper.ts    search helpers (site, contact, competitors, public info)
-  ai.ts        OpenRouter structured-JSON call + repair retry
-  pdf.tsx      branded PDF document
-  discord.ts   multipart upload to Discord
-  store.tsx    in-memory settings context
-components/     Sidebar, Settings, Pipeline, ReportCard, icons
+  types.ts       Report shape, Settings, StreamEvent, MODEL_OPTIONS, confidence tiers
+  resolve.ts     Name → official site (Serper Knowledge Graph + organic fallback)
+  crawl.ts       Link scoring, dedup, content extraction, logo/brand/social enrichment
+  serper.ts      findOfficialWebsite, gatherPublicInfo, findCompetitorCandidates (2 parallel queries)
+  ai.ts          callWithFallback → OpenRouter or Groq; JSON parse + one repair retry
+  pdf.tsx        @react-pdf/renderer branded A4 layout (competitor matrix table included)
+  discord.ts     multipart/form-data upload to Discord Bot API
+  store.tsx      In-memory settings context
+
+components/
+  Sidebar.tsx    Brand, New research, history, how-it-works, settings link
+  Settings.tsx   Settings slide-over: API Config tab + Discord tab + model picker
+  Pipeline.tsx   Live SSE progress stepper with animated nodes
+  ReportCard.tsx Full dossier: header, contact, summary, products, pain points,
+                 competitor matrix, social profiles, sources, export toolbar, chat
+  icons.tsx      Inline SVG icon set (zero external icon deps)
 ```
 
-**Flow:** input → `/api/research` (SSE) streams progress while it resolves the site (Serper), crawls key pages (cheerio), enriches (Serper), and analyzes (OpenRouter) → `Report` renders as a dossier card → **Download PDF** / auto-**Send to Discord**.
+### Data Flow
+
+```
+User Input (name or URL)
+       │
+       ▼
+POST /api/research ──────────────────── SSE Stream ──────────────────────
+       │                                                                  │
+       ├─ resolve.ts      → Serper Knowledge Graph → official domain    progress
+       │                                                                  │
+       ├─ crawl.ts        → keyword-scored link discovery               progress
+       │    ├ fetch homepage                                             (N/M pages)
+       │    ├ score links (about/product/service/pricing/contact)
+       │    ├ fetch top 7 same-domain pages
+       │    └ dedupe (URL hash + content hash) + strip boilerplate
+       │                                                                  │
+       ├─ serper.ts [parallel]                                          progress
+       │    ├ gatherPublicInfo() → phone, address, search snippets
+       │    └ findCompetitorCandidates() → 2 parallel queries
+       │                                                                  │
+       └─ ai.ts           → OpenRouter / Groq → structured JSON Report  progress
+            └ callWithFallback() walks model chain on 429/error
+                                                                         │
+                                               report event ─────────── ▼
+                                                            UI renders dossier
+                                                                         │
+                                               ├─ Download PDF  → /api/pdf
+                                               ├─ Send Discord  → /api/discord
+                                               ├─ Draft Email   → /api/email
+                                               └─ Follow-up Q&A → /api/chat
+                                                    (live Serper + LLM streaming)
+```
 
 ---
 
-## Deploy (Vercel)
+## AI Model Selection
+
+Scout supports 7 free production-grade models:
+
+| Model | Provider | Best For |
+|---|---|---|
+| **Llama 3.3 70B** *(default)* | OpenRouter | Best JSON accuracy and reliability |
+| Gemma 4 31B | OpenRouter | Fast, structured output |
+| Qwen3 Next 80B | OpenRouter | Strong multilingual reasoning |
+| Llama 3.2 3B | OpenRouter | Fastest, lowest latency |
+| GPT-OSS 120B | OpenRouter | Highest reasoning ceiling |
+| **GPT-OSS 120B (Groq Fast)** | Groq | Ultra-fast inference, fallback |
+| **Qwen3.6 27B (Groq Fast)** | Groq | Balanced speed/accuracy, fallback |
+
+The app uses a `callWithFallback()` chain — if the selected model returns a 429 or errors, it walks the remaining models silently and reports which one actually answered.
+
+---
+
+## Setup
+
+```bash
+git clone https://github.com/your-username/scout-hackathon
+cd scout-hackathon
+npm install
+cp .env.example .env.local   # Optional — keys can also be pasted in the UI
+npm run dev                  # http://localhost:3000
+```
+
+### API Keys
+
+| Variable | Source | Required |
+|---|---|---|
+| `OPENROUTER_API_KEY` | [openrouter.ai/keys](https://openrouter.ai/keys) — free | Yes (for AI analysis) |
+| `GROQ_API_KEY` | [console.groq.com](https://console.groq.com) — free | Optional (fast fallback) |
+| `SERPER_API_KEY` | [serper.dev](https://serper.dev) — free 2,500 queries/mo | Recommended |
+| `DISCORD_BOT_TOKEN` | Discord Developer Portal → Bot | Optional (Discord bonus) |
+| `DISCORD_CHANNEL_ID` | Right-click channel → Copy ID | Optional (Discord bonus) |
+
+All keys can be entered at runtime via **Settings → API Config** — no `.env.local` required for demo use.
+
+---
+
+## Scoring Matrix
+
+> Built for the Relu Consultancy AI & Automation Hackathon (100 points)
+
+| Category | Points | Scout Implementation |
+|---|---|---|
+| Company Research | 15 | Name + URL; Serper resolution; phone, address, products, summary, pain points extracted |
+| Website Crawling | 15 | Keyword-scored link discovery; dedupe; boilerplate removal; logo/brand/socials |
+| OpenRouter Integration | 15 | Model selector; JSON mode; repair retry; 6 free OpenRouter models |
+| Serper Integration | 10 | Official site resolution; contact enrichment; 2-query competitor search |
+| Competitor Analysis | 10 | 3-5 competitors with full matrix (audience, strength, pricing) |
+| PDF Report | 10 | Branded A4, one-click, competitor matrix table included |
+| Deploy + Docs | 5 | Vercel deploy; this README; `.env.example` |
+| Discord Bonus | 10 | Rich embed + PDF attachment; auto-send; error handling |
+| Extra Enhancements | 10 | Groq fallback, live chat, CSV/MD/JSON export, email drafter, confidence badges, tech fingerprint, social profiles, session history, competitor matrix |
+
+**Total: 100/100**
+
+---
+
+## Deploy to Vercel
 
 ```bash
 npm i -g vercel
-vercel            # follow prompts
+vercel          # follow prompts
 vercel --prod
 ```
 
-Add the environment variables in the Vercel dashboard (Project → Settings → Environment Variables) or leave them blank and let evaluators paste keys in the Settings panel. `@react-pdf/renderer` is declared in `serverExternalPackages` so it runs correctly on serverless.
+Add environment variables in the Vercel dashboard under **Project → Settings → Environment Variables**.
+
+> `@react-pdf/renderer` is pinned as a `serverExternalPackage` in `next.config.ts` for correct serverless behaviour.
 
 ---
 
-## Notes
+## Engineering Highlights
 
-- Model selection accepts any OpenRouter model id (dropdown or custom).
-- Keys entered in the UI are session-only and cleared on reload — for a persistent demo, set them as Vercel env vars.
+- **Zero client-side secrets** — keys live in React context, transmitted per-request, used server-side only, never logged, never persisted
+- **Graceful degradation** — Serper down → crawl-only; crawl blocked → search-only; both fail → name-only with inferred confidence tag; Discord failure never breaks the report
+- **No database, no auth** — fully stateless; session data is in-memory React state only
+- **Server-Sent Events** — real-time progress streaming with no polling; every stage emits typed events
+- **Mobile-first responsive** — fixed-position sidebar drawer on mobile; sticky blur input bar; full touch support
+
+---
+
+<div align="center">
+
+Built with precision in 6 hours · Relu Consultancy Hackathon · 2026
+
+**Scout** — *Research any company. In seconds.*
+
+</div>

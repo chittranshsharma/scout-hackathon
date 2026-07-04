@@ -23,7 +23,8 @@ ABSOLUTE RULES (violating these makes the report worthless):
 - "summary": 2-4 sentences, strictly paraphrasing what the context says the company does. No embellishment.
 - "products": concrete products/services named in the context. Empty array if none stated.
 - "painPoints": business/operational challenges this company plausibly faces. These are interpretive, but each MUST be grounded in evidence from the context (their market, product, scale, competition as described) — not generic filler. 3-5 points.
-- "competitors": REAL companies in the same industry/market, 3-6 of them, each with its real homepage URL. Only include competitors you are confident actually exist. Prefer ones mentioned in the competitor snippets.
+- "competitors": REAL companies in the same industry/market, 3-5 of them, each with its real homepage URL. Only include competitors you are confident actually exist. Prefer ones mentioned in the competitor snippets.
+- "competitorMatrix": compare the target company to the top 3-5 competitors. Use the provided snippets where possible. For well-known competitors, you may use established industry facts to describe their target audience, core strengths, and general pricing models (e.g. value-based, premium, subscription). Do NOT fabricate specific pricing numbers (e.g. "$50,000") or speculative data. If a competitor is obscure or lacks public info, write "Not publicly disclosed".
 
 Respond with ONLY a JSON object, no markdown, matching exactly:
 {
@@ -33,7 +34,8 @@ Respond with ONLY a JSON object, no markdown, matching exactly:
   "summary": string,
   "products": string[],
   "painPoints": string[],
-  "competitors": [{ "name": string, "website": string }]
+  "competitors": [{ "name": string, "website": string }],
+  "competitorMatrix": [{ "name": string, "audience": string, "coreStrength": string, "pricingModel": string }]
 }`;
 
 function buildUserPrompt(input: AnalyzeInput): string {
@@ -69,29 +71,37 @@ type ORResponse = {
   error?: { message?: string };
 };
 
-async function callOpenRouter(
+async function callLLM(
   messages: { role: string; content: string }[],
   model: string,
-  key: string,
+  keys: { openrouterKey?: string; groqKey?: string },
   useJsonMode = true,
   maxTokens = 2000,
 ): Promise<string> {
+  const isGroq = model.startsWith("groq:");
+  const actualModel = isGroq ? model.replace("groq:", "") : model;
+  const url = isGroq ? "https://api.groq.com/openai/v1/chat/completions" : OPENROUTER_URL;
+  const authKey = isGroq ? keys.groqKey : keys.openrouterKey;
+
+  if (!authKey) throw new Error(`Missing API key for ${isGroq ? "Groq" : "OpenRouter"}`);
+
   const body: Record<string, unknown> = {
-    model,
+    model: actualModel,
     messages,
     temperature: 0.4,
     max_tokens: maxTokens,
   };
-  // Not every free model supports structured-output mode; we retry without it.
   if (useJsonMode) body.response_format = { type: "json_object" };
 
-  const res = await fetch(OPENROUTER_URL, {
+  const res = await fetch(url, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${key}`,
+      Authorization: `Bearer ${authKey}`,
       "Content-Type": "application/json",
-      "HTTP-Referer": "https://company-research-assistant.vercel.app",
-      "X-Title": "AI Company Research Assistant",
+      ...(isGroq ? {} : {
+        "HTTP-Referer": "https://company-research-assistant.vercel.app",
+        "X-Title": "AI Company Research Assistant",
+      }),
     },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(45000),
@@ -100,16 +110,14 @@ async function callOpenRouter(
   const data: ORResponse = await res.json();
   if (!res.ok || data.error) {
     const msg = data.error?.message || `HTTP ${res.status}`;
-    // A model that rejects response_format → retry once without JSON mode.
     if (useJsonMode && /response_format|json|not support|invalid/i.test(msg)) {
-      return callOpenRouter(messages, model, key, false, maxTokens);
+      return callLLM(messages, model, keys, false, maxTokens);
     }
-    throw new Error(`OpenRouter error: ${msg}`);
+    throw new Error(`${isGroq ? "Groq" : "OpenRouter"} error: ${msg}`);
   }
   const m = data.choices?.[0]?.message;
-  // Reasoning models may leave `content` empty and put text in `reasoning`.
   const content = m?.content || m?.reasoning || "";
-  if (!content) throw new Error("OpenRouter returned empty response");
+  if (!content) throw new Error(`${isGroq ? "Groq" : "OpenRouter"} returned empty response`);
   return content;
 }
 
@@ -142,7 +150,7 @@ function toStringArray(v: unknown): string[] {
 
 export async function analyzeCompany(
   input: AnalyzeInput,
-  key: string,
+  keys: { openrouterKey?: string; groqKey?: string },
   model: string = DEFAULT_MODEL,
   extraSources: string[] = [],
 ): Promise<Report> {
@@ -164,7 +172,7 @@ export async function analyzeCompany(
   let parsed: Record<string, unknown>;
   let actualModel = model;
   try {
-    const r = await callWithFallback(messages, model, key);
+    const r = await callWithFallback(messages, model, keys);
     actualModel = r.actualModel;
     parsed = parseJson(r.content);
   } catch {
@@ -178,7 +186,7 @@ export async function analyzeCompany(
             "Your previous reply was not valid JSON. Output ONLY the JSON object — start with { and end with }. No prose, no markdown, no explanation.",
         },
       ];
-      const r = await callWithFallback(repair, model, key);
+      const r = await callWithFallback(repair, model, keys);
       actualModel = r.actualModel;
       parsed = parseJson(r.content);
     } catch {
@@ -200,6 +208,17 @@ export async function analyzeCompany(
         .map((c) => ({
           name: typeof c?.name === "string" ? c.name : "",
           website: typeof c?.website === "string" ? c.website : "",
+        }))
+        .filter((c) => c.name)
+    : [];
+
+  const competitorMatrix = Array.isArray(parsed.competitorMatrix)
+    ? (parsed.competitorMatrix as Record<string, unknown>[])
+        .map((c) => ({
+          name: typeof c?.name === "string" ? c.name : "",
+          audience: typeof c?.audience === "string" ? c.audience : "Unknown",
+          coreStrength: typeof c?.coreStrength === "string" ? c.coreStrength : "Unknown",
+          pricingModel: typeof c?.pricingModel === "string" ? c.pricingModel : "Unknown",
         }))
         .filter((c) => c.name)
     : [];
@@ -230,6 +249,7 @@ export async function analyzeCompany(
       summary: typeof parsed.summary === "string" ? parsed.summary : "",
     },
     competitors,
+    competitorMatrix,
     sources: allSources,
     model: actualModel,
     confidence,
@@ -242,14 +262,26 @@ export async function analyzeCompany(
 async function callWithFallback(
   messages: { role: string; content: string }[],
   model: string,
-  key: string,
+  keys: { openrouterKey?: string; groqKey?: string },
   maxTokens = 2000,
 ): Promise<{ content: string; actualModel: string }> {
-  const chain = [model, ...MODEL_OPTIONS.map((m) => m.id).filter((id) => id !== model)];
+  // If user provided a groqKey, insert groq models near the front of the fallback chain
+  // so if OpenRouter hits a 429 rate limit, it fails over to Groq immediately!
+  const defaultChain = MODEL_OPTIONS.map((m) => m.id);
+  const chain = [model, ...defaultChain.filter((id) => id !== model)];
+  
+  if (keys.groqKey && !model.startsWith("groq:")) {
+    chain.splice(1, 0, "groq:openai/gpt-oss-120b", "groq:qwen/qwen3.6-27b");
+  }
+
   let lastErr: unknown;
-  for (const mdl of chain) {
+  for (const mdl of Array.from(new Set(chain))) {
     try {
-      return { content: await callOpenRouter(messages, mdl, key, true, maxTokens), actualModel: mdl };
+      // Skip models if their respective key isn't provided
+      if (mdl.startsWith("groq:") && !keys.groqKey) continue;
+      if (!mdl.startsWith("groq:") && !keys.openrouterKey) continue;
+
+      return { content: await callLLM(messages, mdl, keys, true, maxTokens), actualModel: mdl };
     } catch (e) {
       lastErr = e;
       // rate-limited or provider error → immediately try the next model
@@ -367,7 +399,7 @@ function sanitizeEmail(text: string): string {
 
 export async function draftOutreachEmail(
   report: Report,
-  key: string,
+  keys: { openrouterKey?: string; groqKey?: string },
   model: string = DEFAULT_MODEL,
 ): Promise<OutreachEmail> {
   const c = report.company;
@@ -384,7 +416,7 @@ Pain points: ${c.painPoints.map((p) => `- ${p}`).join("\n")}`;
 
   let parsed: Record<string, unknown>;
   try {
-    parsed = parseJson((await callWithFallback(messages, model, key, 2000)).content);
+    parsed = parseJson((await callWithFallback(messages, model, keys, 2000)).content);
     if (typeof parsed.subject !== "string" || parsed.subject.replace(/\./g, "").trim().length < 3) throw new Error("Invalid subject");
     if (typeof parsed.body !== "string" || parsed.body.replace(/\./g, "").trim().length < 10) throw new Error("Invalid body");
   } catch (err) {
@@ -392,7 +424,7 @@ Pain points: ${c.painPoints.map((p) => `- ${p}`).join("\n")}`;
       ...messages,
       { role: "user", content: "Respond again with ONLY the JSON object { subject, body }." },
     ];
-    parsed = parseJson((await callWithFallback(repair, model, key, 2000)).content);
+    parsed = parseJson((await callWithFallback(repair, model, keys, 2000)).content);
     if (typeof parsed.subject !== "string" || parsed.subject.replace(/\./g, "").trim().length < 3) throw new Error("Invalid subject");
     if (typeof parsed.body !== "string" || parsed.body.replace(/\./g, "").trim().length < 10) throw new Error("Invalid body");
   }

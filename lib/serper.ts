@@ -63,11 +63,15 @@ export async function findOfficialWebsite(
   const data = await serperSearch(`${name} official website`, key, 10);
   const sources: string[] = [];
 
-  // Ordered candidates: knowledge-graph site first, then non-aggregator organics.
-  const candidates: string[] = [];
+  // 1. Trust Knowledge Graph website first. Bypasses ping check (curated by Google).
   if (data.knowledgeGraph?.website && isOfficialCandidate(data.knowledgeGraph.website)) {
-    candidates.push(data.knowledgeGraph.website);
+    const url = normalizeUrl(data.knowledgeGraph.website);
+    sources.push(data.knowledgeGraph.website);
+    return { website: url, knowledge: data.knowledgeGraph, sources };
   }
+
+  // 2. Otherwise compile candidates from organic search
+  const candidates: string[] = [];
   for (const r of data.organic ?? []) {
     if (isOfficialCandidate(r.link)) candidates.push(r.link);
   }
@@ -88,16 +92,20 @@ export async function findOfficialWebsite(
   return { website: firstValidByFormat, knowledge: data.knowledgeGraph, sources };
 }
 
-// Confirm a URL loads without a hard 4xx/5xx. Tolerates HEAD-blocking sites.
+// Confirm a URL loads without a hard 404 or network drop. Tolerates anti-bot blocks (403, 401, 429).
 async function urlResolves(url: string): Promise<boolean> {
   try {
     const res = await fetch(url, {
       method: "GET",
       redirect: "follow",
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; CompanyResearchBot/1.0)" },
+      headers: { 
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" 
+      },
       signal: AbortSignal.timeout(7000),
     });
-    return res.status < 400;
+    // Active servers returning block codes (403/401/429) or even 500s are still valid official websites.
+    // Only a 404 indicates the homepage path itself is dead.
+    return res.status !== 404;
   } catch {
     return false;
   }
@@ -137,16 +145,26 @@ export async function findCompetitorCandidates(
   const snippets: string[] = [];
   const sources: string[] = [];
   try {
-    const data = await serperSearch(`${name} competitors and alternatives`, key, 10);
-    if (data.answerBox?.snippet) snippets.push(data.answerBox.snippet);
-    for (const r of data.organic ?? []) {
+    const [data1, data2] = await Promise.all([
+      serperSearch(`${name} competitors and alternatives`, key, 8).catch(() => ({}) as SerperResponse),
+      serperSearch(`${name} competitors pricing model target audience core strength`, key, 8).catch(() => ({}) as SerperResponse),
+    ]);
+
+    if (data1.answerBox?.snippet) snippets.push(data1.answerBox.snippet);
+    for (const r of data1.organic ?? []) {
+      if (r.snippet) snippets.push(`${r.title}: ${r.snippet}`);
+      sources.push(r.link);
+    }
+
+    if (data2.answerBox?.snippet) snippets.push(data2.answerBox.snippet);
+    for (const r of data2.organic ?? []) {
       if (r.snippet) snippets.push(`${r.title}: ${r.snippet}`);
       sources.push(r.link);
     }
   } catch {
     // ignore
   }
-  return { snippets: snippets.slice(0, 10), sources: [...new Set(sources)].slice(0, 6) };
+  return { snippets: snippets.slice(0, 20), sources: [...new Set(sources)].slice(0, 10) };
 }
 
 export function normalizeUrl(input: string): string {
