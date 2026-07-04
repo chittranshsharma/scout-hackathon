@@ -27,6 +27,8 @@ Built for the Relu Consultancy AI & Automation hackathon.
 - **Self-audit confidence badges** — each section (summary/products/pain points/competitors) is tagged High / Moderate / AI-inferred based on how many independent sources backed it. The system grades its own certainty instead of blind-trusting the LLM.
 - **Deterministic enrichment** — extracts the company **logo** (validated Clearbit → favicon fallback), **brand color** (theme-color → tints the report + PDF + Discord embed), **tech-stack fingerprint** (Next.js/React/Shopify/HubSpot/GA/Stripe/…), and **social profiles** straight from the homepage.
 - **Rich Discord delivery** — Action-Blue embed with logo thumbnail, products / pain points / competitors fields, PDF attachment; returns a delivery timestamp; manual retry with specific error messages (401 invalid token / 403 missing perms / 404 bad channel).
+- **Model comparison** — re-run the analysis with any other free model *without re-crawling* (reuses cached research context via `/api/reanalyze`) — fast side-by-side model quality checks.
+- **Session history** — every company researched this session lists in the sidebar (in-memory, no DB); click to jump back to any past report.
 - **Polish** — typewriter reveal on the AI summary, numbered source citations, copy-as-Markdown, export **.md / .json**, one-click regenerate.
 
 ### Engineering touches

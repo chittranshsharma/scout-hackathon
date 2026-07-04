@@ -16,11 +16,15 @@ export default function Sidebar({
   onClose,
   onNew,
   onOpenSettings,
+  history,
+  onSelect,
 }: {
   open: boolean;
   onClose: () => void;
   onNew: () => void;
   onOpenSettings: () => void;
+  history: { id: string; label: string }[];
+  onSelect: (id: string) => void;
 }) {
   const { hasAI, hasSearch, hasDiscord } = useSettings();
 
@@ -31,7 +35,7 @@ export default function Sidebar({
         className={`fixed inset-0 z-30 bg-black/50 md:hidden ${open ? "block" : "hidden"}`}
       />
       <aside
-        className={`fixed z-40 flex h-full w-[264px] flex-col bg-tile-1 transition-transform duration-300 md:static md:z-0 md:translate-x-0 ${
+        className={`fixed z-40 flex h-full w-[264px] flex-col overflow-y-auto bg-tile-1 transition-transform duration-300 md:static md:z-0 md:translate-x-0 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -59,8 +63,28 @@ export default function Sidebar({
           </button>
         </div>
 
+        {/* Recent research (in-memory, this session) */}
+        {history.length > 0 && (
+          <div className="mt-7 px-5">
+            <div className="type-caption-strong mb-2.5 text-body-muted">Recent</div>
+            <ul className="space-y-0.5">
+              {history.slice().reverse().map((h) => (
+                <li key={h.id}>
+                  <button
+                    onClick={() => onSelect(h.id)}
+                    className="press-scale type-caption block w-full truncate rounded-sm px-2 py-1.5 text-left text-body-muted transition-colors hover:bg-white/[0.06] hover:text-white"
+                    title={h.label}
+                  >
+                    {h.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {/* How it works */}
-        <div className="mt-8 px-5">
+        <div className="mt-7 px-5">
           <div className="type-caption-strong mb-3 text-body-muted">How it works</div>
           <ol className="space-y-3.5">
             {STEPS.map((s, i) => (

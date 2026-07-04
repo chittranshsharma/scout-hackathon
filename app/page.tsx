@@ -227,6 +227,13 @@ function App() {
 
   const onSubmit = () => (chatMode ? sendChat(input) : runResearch(input));
 
+  // In-memory session history (no storage) — jump to any past report.
+  const history = runs.filter((r) => r.report).map((r) => ({ id: r.id, label: r.report!.company.name }));
+  const selectRun = (id: string) => {
+    setSidebarOpen(false);
+    document.getElementById(`run-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   const empty = runs.length === 0;
 
   return (
@@ -242,6 +249,8 @@ function App() {
           setSettingsOpen(true);
           setSidebarOpen(false);
         }}
+        history={history}
+        onSelect={selectRun}
       />
       <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
@@ -272,7 +281,7 @@ function App() {
           ) : (
             <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6">
               {runs.map((run) => (
-                <div key={run.id} className="mb-10">
+                <div key={run.id} id={`run-${run.id}`} className="mb-10 scroll-mt-4">
                   <div className="mb-5 flex justify-end">
                     <div className="type-body max-w-[85%] rounded-lg bg-parchment px-4 py-2.5 text-ink">
                       {run.input}
@@ -288,6 +297,8 @@ function App() {
                         onDownload={() => downloadPdf(run.report!)}
                         onDiscord={() => sendDiscord(run.id, run.report!)}
                         onRegenerate={() => runResearch(run.input)}
+                        onReportUpdate={(r) => patchRun(run.id, { report: r })}
+                        context={run.context}
                         discordState={run.discord}
                         discordEnabled={hasDiscord}
                         discordError={run.discordError}

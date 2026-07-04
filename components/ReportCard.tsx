@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSettings } from "@/lib/store";
-import type { ConfidenceTier, OutreachEmail, Report } from "@/lib/types";
+import { MODEL_OPTIONS, type ConfidenceTier, type OutreachEmail, type Report } from "@/lib/types";
 import { IconCheck, IconDiscord, IconDownload, IconLink } from "./icons";
 
 type DiscordState = "idle" | "sending" | "sent" | "error";
@@ -101,6 +101,8 @@ export default function ReportCard({
   onDownload,
   onDiscord,
   onRegenerate,
+  onReportUpdate,
+  context,
   discordState,
   discordEnabled,
   discordError,
@@ -111,6 +113,8 @@ export default function ReportCard({
   onDownload: () => void;
   onDiscord: () => void;
   onRegenerate: () => void;
+  onReportUpdate: (r: Report) => void;
+  context?: string;
   discordState: DiscordState;
   discordEnabled: boolean;
   discordError?: string;
@@ -148,6 +152,34 @@ export default function ReportCard({
       setEmailError(err instanceof Error ? err.message : "Draft failed");
     } finally {
       setEmailLoading(false);
+    }
+  };
+
+  // Re-run analysis with a different model (no re-crawl) for quick comparison.
+  const [rerunModel, setRerunModel] = useState(report.model);
+  const [rerunning, setRerunning] = useState(false);
+  const [rerunError, setRerunError] = useState<string | null>(null);
+  const modelOptions = MODEL_OPTIONS.some((m) => m.id === report.model)
+    ? MODEL_OPTIONS
+    : [{ id: report.model, label: report.model }, ...MODEL_OPTIONS];
+
+  const rerun = async () => {
+    if (!context) return;
+    setRerunning(true);
+    setRerunError(null);
+    try {
+      const res = await fetch("/api/reanalyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ report, context, settings: { ...settings, model: rerunModel } }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      onReportUpdate(data);
+    } catch (err) {
+      setRerunError(err instanceof Error ? err.message : "Re-run failed");
+    } finally {
+      setRerunning(false);
     }
   };
 
@@ -444,6 +476,36 @@ export default function ReportCard({
         <p className="type-fine-print border-t border-divider-soft px-6 py-2.5" style={{ color: "var(--color-danger)" }}>
           Discord: {discordError}
         </p>
+      )}
+
+      {context && (
+        <div className="flex flex-wrap items-center gap-2 border-t border-divider-soft bg-parchment/40 px-6 py-3">
+          <span className="type-fine-print text-ink-muted-48">Compare model</span>
+          <select
+            value={rerunModel}
+            onChange={(e) => setRerunModel(e.target.value)}
+            className="type-caption rounded-sm border border-hairline bg-canvas px-2 py-1 text-ink focus:border-primary focus:outline-none"
+          >
+            {modelOptions.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={rerun}
+            disabled={rerunning}
+            className="press-scale type-caption rounded-pill border border-primary px-3 py-1 text-primary transition-colors hover:bg-primary/5 disabled:opacity-60"
+          >
+            {rerunning ? "Re-running…" : "Re-run"}
+          </button>
+          <span className="type-fine-print text-ink-muted-48">Currently: {report.model}</span>
+          {rerunError && (
+            <span className="type-fine-print" style={{ color: "var(--color-danger)" }}>
+              {rerunError}
+            </span>
+          )}
+        </div>
       )}
     </article>
   );
