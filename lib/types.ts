@@ -18,7 +18,6 @@ export type Report = {
   // Deterministic enrichment extracted during crawl (not AI-generated)
   logo?: string;
   brandColor?: string;
-  techStack?: string[];
   socials?: Social[];
   // Self-audit: how well each section is backed by real sources.
   confidence?: Record<string, ConfidenceTier>;

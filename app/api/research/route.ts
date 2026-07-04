@@ -43,10 +43,12 @@ export async function POST(req: NextRequest) {
           progress("resolving", "Official site not found — using search only");
         }
 
+        const wasUrl = looksLikeUrl(input);
+
         // 2. Crawl
         const crawlPages: { url: string; title: string; text: string }[] = [];
         let crawlSources: string[] = [];
-        let enrichment: import("@/lib/crawl").Enrichment = { techStack: [], socials: [] };
+        let enrichment: import("@/lib/crawl").Enrichment = { socials: [] };
         if (resolved.website) {
           progress("crawling", "Crawling website", "Discovering key pages");
           try {
@@ -62,6 +64,25 @@ export async function POST(req: NextRequest) {
           }
         }
 
+        // Canonical company name: for URL input, trust the site's own declared
+        // name (og:site_name / <title>) over the host slug so downstream Serper
+        // queries search the RIGHT company. For name input, trust the Serper
+        // knowledge-graph name from resolution.
+        const companyName = wasUrl ? enrichment.siteName || resolved.name : resolved.name;
+
+        // Debug/verification log (visible in server output during testing).
+        console.log(
+          `[research] input=${JSON.stringify(input)} wasUrl=${wasUrl} resolvedDomain=${resolved.website || "-"} extractedName=${JSON.stringify(companyName)}`,
+        );
+        // Name-input sanity check: warn if the crawled site names a different company.
+        if (!wasUrl && enrichment.siteName) {
+          const a = companyName.toLowerCase().replace(/[^a-z0-9]/g, "");
+          const b = enrichment.siteName.toLowerCase().replace(/[^a-z0-9]/g, "");
+          if (a && b && !a.includes(b.slice(0, 6)) && !b.includes(a.slice(0, 6))) {
+            console.warn(`[research] name mismatch: searched "${companyName}" but site says "${enrichment.siteName}"`);
+          }
+        }
+
         // 3. Search enrichment (Serper) — skipped gracefully if no key
         let searchSnippets: string[] = [];
         let competitorSnippets: string[] = [];
@@ -73,8 +94,8 @@ export async function POST(req: NextRequest) {
           progress("searching", "Searching public sources", "Contact info & competitors");
           try {
             const [pub, comp] = await Promise.all([
-              gatherPublicInfo(resolved.name, serperKey),
-              findCompetitorCandidates(resolved.name, serperKey),
+              gatherPublicInfo(companyName, serperKey),
+              findCompetitorCandidates(companyName, serperKey),
             ]);
             searchSnippets = pub.snippets;
             competitorSnippets = comp.snippets;
@@ -97,7 +118,7 @@ export async function POST(req: NextRequest) {
         progress("analyzing", "Generating AI insights", `Model: ${model}`);
         const report = await analyzeCompany(
           {
-            name: resolved.name,
+            name: companyName,
             website: resolved.website,
             crawledPages: crawlPages,
             searchSnippets,
@@ -110,10 +131,9 @@ export async function POST(req: NextRequest) {
           [...crawlSources, ...searchSources, ...resolved.sources],
         );
 
-        // Attach deterministic enrichment (logo/brand/tech/socials).
+        // Attach deterministic enrichment (logo/brand/socials).
         report.logo = enrichment.logo;
         report.brandColor = enrichment.brandColor;
-        report.techStack = enrichment.techStack;
         report.socials = enrichment.socials;
 
         send({ type: "report", report });

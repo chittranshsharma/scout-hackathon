@@ -5,8 +5,9 @@ export type CrawledPage = { url: string; title: string; text: string };
 export type Enrichment = {
   logo?: string;
   brandColor?: string;
-  techStack: string[];
   socials: Social[];
+  // Company name as the site itself declares it (og:site_name / <title>).
+  siteName?: string;
 };
 export type CrawlResult = { pages: CrawledPage[]; sources: string[]; enrichment: Enrichment };
 
@@ -33,18 +34,21 @@ const SKIP_FRAGMENTS = [
   "#", "mailto:", "tel:", "javascript:", ".pdf", ".jpg", ".png", ".zip", ".mp4",
 ];
 
-function fetchPage(url: string): Promise<string | null> {
-  return fetch(url, {
-    headers: { "User-Agent": UA, Accept: "text/html" },
-    signal: AbortSignal.timeout(PER_PAGE_TIMEOUT),
-    redirect: "follow",
-  })
-    .then((res) => {
-      const ct = res.headers.get("content-type") || "";
-      if (!res.ok || !ct.includes("text/html")) return null;
-      return res.text();
-    })
-    .catch(() => null);
+// Returns cleaned HTML + the final URL after redirects (so the crawler scopes
+// links against the real domain, e.g. after http→https or www→apex redirects).
+async function fetchPage(url: string): Promise<{ html: string; finalUrl: string } | null> {
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": UA, Accept: "text/html" },
+      signal: AbortSignal.timeout(PER_PAGE_TIMEOUT),
+      redirect: "follow",
+    });
+    const ct = res.headers.get("content-type") || "";
+    if (!res.ok || !ct.includes("text/html")) return null;
+    return { html: await res.text(), finalUrl: res.url || url };
+  } catch {
+    return null;
+  }
 }
 
 function extract($: cheerio.CheerioAPI): { title: string; text: string } {
@@ -69,27 +73,6 @@ function extract($: cheerio.CheerioAPI): { title: string; text: string } {
   return { title, text };
 }
 
-// Signatures for lightweight tech-stack fingerprinting from raw homepage HTML.
-const TECH_SIGNS: [string, RegExp][] = [
-  ["Next.js", /\/_next\/|__NEXT_DATA__/],
-  ["React", /data-reactroot|react\.production|_reactListening/],
-  ["Vue.js", /data-v-[0-9a-f]{8}|__vue__|vue\.runtime/],
-  ["Angular", /ng-version=|ng-app=/],
-  ["Gatsby", /___gatsby|gatsby-/],
-  ["Svelte", /svelte-[0-9a-z]+/],
-  ["WordPress", /wp-content|wp-includes/],
-  ["Shopify", /cdn\.shopify\.com|Shopify\.theme/],
-  ["Wix", /static\.wixstatic\.com|_wixCssImports/],
-  ["Squarespace", /squarespace\.com|static1\.squarespace/],
-  ["Webflow", /assets\.website-files\.com|webflow\.js/],
-  ["HubSpot", /js\.hs-scripts\.com|hs-analytics/],
-  ["Google Analytics", /googletagmanager\.com|google-analytics\.com|gtag\(/],
-  ["Segment", /cdn\.segment\.com|analytics\.js/],
-  ["Intercom", /widget\.intercom\.io|intercomSettings/],
-  ["Stripe", /js\.stripe\.com/],
-  ["Cloudflare", /cdnjs\.cloudflare\.com|__cf_/],
-];
-
 const SOCIAL_HOSTS: [string, RegExp][] = [
   ["LinkedIn", /linkedin\.com\/(company|in|school)\//i],
   ["X", /(twitter|x)\.com\/[A-Za-z0-9_]+/i],
@@ -109,21 +92,29 @@ async function validImage(url: string): Promise<boolean> {
   }
 }
 
-// Pull logo / brand color / tech stack / socials from the pristine homepage.
-async function extractEnrichment(html: string, origin: string): Promise<Enrichment> {
+function cleanSiteName(raw: string): string {
+  // Trim common "Home — Brand · tagline" title decorations to the brand token.
+  const first = raw.split(/[|–—·:]/)[0].trim();
+  return (first.length >= 2 ? first : raw.trim()).slice(0, 80);
+}
+
+// Pull logo / brand color / social links / site name from the ACTUAL homepage.
+// Logo is sourced from the site's own declared icons — never a third-party
+// domain guess (which can return a different, similarly-named company's logo).
+async function extractEnrichment(html: string, finalUrl: string): Promise<Enrichment> {
   const $ = cheerio.load(html);
+  const origin = new URL(finalUrl).origin;
   const host = new URL(origin).hostname.replace(/^www\./, "");
+
+  // Company name as the site declares it: og:site_name first, then <title>.
+  const ogSite = $('meta[property="og:site_name"]').attr("content")?.trim();
+  const title = $("title").first().text().trim();
+  const siteName = ogSite || (title ? cleanSiteName(title) : undefined);
 
   // Brand color from theme-color meta (cheap, often present).
   let brandColor: string | undefined;
   const tc = $('meta[name="theme-color"]').attr("content")?.trim();
   if (tc && /^#?[0-9a-f]{3,8}$|^rgb/i.test(tc)) brandColor = tc.startsWith("#") || tc.startsWith("rgb") ? tc : `#${tc}`;
-
-  // Tech stack fingerprint.
-  const techStack: string[] = [];
-  for (const [name, re] of TECH_SIGNS) {
-    if (re.test(html)) techStack.push(name);
-  }
 
   // Social links (first match per network).
   const socials: Social[] = [];
@@ -139,13 +130,38 @@ async function extractEnrichment(html: string, origin: string): Promise<Enrichme
     }
   });
 
-  // Logo: Clearbit gives clean transparent PNGs; fall back to a favicon that
-  // always resolves. Validated so the PDF renderer never hits a 404.
-  const clearbit = `https://logo.clearbit.com/${host}`;
-  const favicon = `https://www.google.com/s2/favicons?domain=${host}&sz=128`;
-  const logo = (await validImage(clearbit)) ? clearbit : favicon;
+  // Logo, in priority order, from the site's OWN <head> (guaranteed same company):
+  // apple-touch-icon → largest rel=icon → og:image → /favicon.ico → google favicon.
+  const candidates: string[] = [];
+  const pushIcon = (sel: string) => {
+    $(sel).each((_, el) => {
+      const href = $(el).attr("href") || $(el).attr("content");
+      if (href) {
+        try {
+          candidates.push(new URL(href, origin).href);
+        } catch {
+          /* skip bad href */
+        }
+      }
+    });
+  };
+  pushIcon('link[rel="apple-touch-icon"]');
+  pushIcon('link[rel="apple-touch-icon-precomposed"]');
+  pushIcon('link[rel~="icon"]');
+  pushIcon('meta[property="og:image"]');
+  candidates.push(`${origin}/favicon.ico`);
 
-  return { logo, brandColor, techStack: techStack.slice(0, 8), socials };
+  let logo: string | undefined;
+  for (const url of candidates) {
+    if (await validImage(url)) {
+      logo = url;
+      break;
+    }
+  }
+  // Guaranteed-valid last resort (same domain, never 404s → safe for the PDF).
+  logo ??= `https://www.google.com/s2/favicons?domain=${host}&sz=128`;
+
+  return { logo, brandColor, socials, siteName };
 }
 
 // Minimal robots.txt respect: collect Disallow paths under `User-agent: *`.
@@ -179,6 +195,7 @@ function discoverLinks($: cheerio.CheerioAPI, origin: string, disallowed: string
   const scored: { url: string; score: number }[] = [];
   const seen = new Set<string>();
 
+  const originHost = new URL(origin).hostname.replace(/^www\./, "");
   $("a[href]").each((_, el) => {
     const href = $(el).attr("href");
     if (!href) return;
@@ -188,7 +205,9 @@ function discoverLinks($: cheerio.CheerioAPI, origin: string, disallowed: string
     } catch {
       return;
     }
-    if (abs.origin !== origin) return; // same-domain only
+    // Same registrable host only — tolerate www/apex and http/https differences,
+    // but never follow links to a different domain.
+    if (abs.hostname.replace(/^www\./, "") !== originHost) return;
     const path = abs.pathname.toLowerCase();
     if (SKIP_FRAGMENTS.some((f) => path.includes(f) || href.includes(f))) return;
     if (disallowed.some((d) => path.startsWith(d))) return; // robots.txt
@@ -216,24 +235,26 @@ export async function crawlSite(
   startUrl: string,
   onPage?: (i: number, total: number, url: string) => void,
 ): Promise<CrawlResult> {
-  const origin = new URL(startUrl).origin;
+  const startOrigin = new URL(startUrl).origin;
   const visited = new Set<string>();
   const contentHashes = new Set<string>();
   const pages: CrawledPage[] = [];
-  let enrichment: Enrichment = { techStack: [], socials: [] };
+  let enrichment: Enrichment = { socials: [] };
 
   // Fetch robots.txt + homepage together.
-  const [disallowed, homeHtml] = await Promise.all([fetchDisallowed(origin), fetchPage(startUrl)]);
+  const [disallowed, home] = await Promise.all([fetchDisallowed(startOrigin), fetchPage(startUrl)]);
   const queue: string[] = [];
-  if (homeHtml) {
+  // Scope everything to the FINAL post-redirect origin (fixes www/http drift).
+  let origin = startOrigin;
+  if (home) {
+    origin = new URL(home.finalUrl).origin;
     // Enrichment from the pristine HTML before extract() strips header/footer.
-    enrichment = await extractEnrichment(homeHtml, origin);
-    const $ = cheerio.load(homeHtml);
+    enrichment = await extractEnrichment(home.html, home.finalUrl);
+    const $ = cheerio.load(home.html);
     const { title, text } = extract($);
-    const home = origin + (new URL(startUrl).pathname.replace(/\/$/, "") || "");
-    visited.add(home);
+    visited.add(origin + (new URL(home.finalUrl).pathname.replace(/\/$/, "") || ""));
     if (text) {
-      pages.push({ url: startUrl, title, text });
+      pages.push({ url: home.finalUrl, title, text });
       contentHashes.add(text.slice(0, 200));
     }
     queue.push(...discoverLinks($, origin, disallowed));
@@ -248,9 +269,9 @@ export async function crawlSite(
     if (visited.has(url)) continue;
     visited.add(url);
 
-    const html = await fetchPage(url);
-    if (!html) continue;
-    const $ = cheerio.load(html);
+    const fetched = await fetchPage(url);
+    if (!fetched) continue;
+    const $ = cheerio.load(fetched.html);
     const { title, text } = extract($);
     if (!text) continue;
 

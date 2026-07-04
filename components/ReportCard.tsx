@@ -65,7 +65,6 @@ function reportToMarkdown(r: Report): string {
     r.competitors.length
       ? `## Competitors\n${r.competitors.map((x) => `- ${x.name}${x.website ? ` — ${x.website}` : ""}`).join("\n")}`
       : "",
-    r.techStack?.length ? `## Detected Technology\n${r.techStack.join(", ")}` : "",
     r.socials?.length ? `## Social\n${r.socials.map((soc) => `- ${soc.type}: ${soc.url}`).join("\n")}` : "",
   ];
   return lines.filter(Boolean).join("\n\n");
@@ -312,21 +311,6 @@ export default function ReportCard({
                   <span className="type-caption text-ink-muted-48">—</span>
                 )}
               </div>
-            ))}
-          </div>
-        </Section>
-      )}
-
-      {report.techStack && report.techStack.length > 0 && (
-        <Section label="Detected Technology">
-          <div className="flex flex-wrap gap-2">
-            {report.techStack.map((t, i) => (
-              <span
-                key={i}
-                className="type-caption rounded-pill bg-parchment px-3 py-1.5 text-ink-muted-80"
-              >
-                {t}
-              </span>
             ))}
           </div>
         </Section>

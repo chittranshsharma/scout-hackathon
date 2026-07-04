@@ -28,9 +28,9 @@ async function runOne(input: string) {
   const resolved = await resolveTarget(input, SERP);
   console.log(`resolved: ${resolved.name} → ${resolved.website || "(no site)"}`);
 
-  const crawl = resolved.website ? await crawlSite(resolved.website) : { pages: [], sources: [], enrichment: { techStack: [], socials: [] } };
+  const crawl = resolved.website ? await crawlSite(resolved.website) : { pages: [], sources: [], enrichment: { socials: [] } };
   console.log(`crawled ${crawl.pages.length} pages, ${crawl.pages.reduce((n, p) => n + p.text.length, 0)} chars`);
-  console.log(`tech: ${crawl.enrichment.techStack.join(", ") || "—"} | socials: ${crawl.enrichment.socials.map((s) => s.type).join(", ") || "—"}`);
+  console.log(`siteName: ${crawl.enrichment.siteName || "—"} | logo: ${crawl.enrichment.logo || "—"} | socials: ${crawl.enrichment.socials.map((s) => s.type).join(", ") || "—"}`);
 
   let snippets: string[] = [];
   let compSnippets: string[] = [];

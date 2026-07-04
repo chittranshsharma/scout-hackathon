@@ -41,7 +41,6 @@ export async function POST(req: NextRequest) {
     // Preserve deterministic enrichment (unchanged by re-analysis).
     fresh.logo = report.logo;
     fresh.brandColor = report.brandColor;
-    fresh.techStack = report.techStack;
     fresh.socials = report.socials;
     fresh.sources = report.sources;
 

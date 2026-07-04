@@ -172,17 +172,6 @@ function ReportDoc({ report }: { report: Report }) {
           </>
         ) : null}
 
-        {report.techStack && report.techStack.length ? (
-          <>
-            <Text style={s.sectionTitle}>Detected Technology</Text>
-            <View style={s.chipWrap}>
-              {report.techStack.map((t, i) => (
-                <Text key={i} style={s.chip}>{t}</Text>
-              ))}
-            </View>
-          </>
-        ) : null}
-
         {report.socials && report.socials.length ? (
           <>
             <Text style={s.sectionTitle}>Social Profiles</Text>
