@@ -12,15 +12,18 @@ export type AnalyzeInput = {
   knownAddress?: string;
 };
 
-const SYSTEM_PROMPT = `You are a precise company research analyst. You are given raw text crawled from a company's website plus web-search snippets. Extract and infer accurate company intelligence.
+const SYSTEM_PROMPT = `You are a precise company-research analyst. You are given raw text crawled from a company's website plus web-search snippets. Your job is to EXTRACT facts from that context — not to recall or guess.
 
-Rules:
-- Use ONLY information supported by the provided context. Do not invent phone numbers, addresses, or URLs.
-- If a field is unknown, use an empty string (for phone/address) or an empty array.
-- painPoints are business/operational challenges THIS company likely faces (market pressure, scaling, competition, differentiation) — inferred, insightful, specific. Not generic.
-- competitors must be real companies in the same industry/market. Provide a plausible official website (homepage URL) for each. 3-6 competitors.
-- summary: 2-4 sentence professional overview.
-- products: concrete products/services offered.
+ABSOLUTE RULES (violating these makes the report worthless):
+- Use ONLY information explicitly present in the provided context. Do NOT use prior knowledge about the company.
+- Do NOT infer or invent phone numbers, addresses, emails, or URLs. If phone/address is not literally written in the context, return an empty string "". A wrong number is far worse than a blank.
+- Never fabricate a fact to fill a field. When uncertain, omit it.
+- "phone": copy the exact phone string from the context, or "".
+- "address": copy the exact address from the context, or "".
+- "summary": 2-4 sentences, strictly paraphrasing what the context says the company does. No embellishment.
+- "products": concrete products/services named in the context. Empty array if none stated.
+- "painPoints": business/operational challenges this company plausibly faces. These are interpretive, but each MUST be grounded in evidence from the context (their market, product, scale, competition as described) — not generic filler. 3-5 points.
+- "competitors": REAL companies in the same industry/market, 3-6 of them, each with its real homepage URL. Only include competitors you are confident actually exist. Prefer ones mentioned in the competitor snippets.
 
 Respond with ONLY a JSON object, no markdown, matching exactly:
 {
@@ -147,9 +150,22 @@ export async function analyzeCompany(
     { role: "user", content: buildUserPrompt(input) },
   ];
 
+  // The concatenated source text — the ONLY thing a fact may be verified against.
+  const sourceText = [
+    ...input.crawledPages.map((p) => p.text),
+    ...input.searchSnippets,
+    input.knownPhone || "",
+    input.knownAddress || "",
+  ]
+    .join("\n")
+    .toLowerCase();
+
   let parsed: Record<string, unknown>;
+  let actualModel = model;
   try {
-    parsed = parseJson(await callOpenRouter(messages, model, key));
+    const r = await callWithFallback(messages, model, key);
+    actualModel = r.actualModel;
+    parsed = parseJson(r.content);
   } catch {
     try {
       // Repair retry: force strict JSON only.
@@ -161,7 +177,9 @@ export async function analyzeCompany(
             "Your previous reply was not valid JSON. Output ONLY the JSON object — start with { and end with }. No prose, no markdown, no explanation.",
         },
       ];
-      parsed = parseJson(await callOpenRouter(repair, model, key));
+      const r = await callWithFallback(repair, model, key);
+      actualModel = r.actualModel;
+      parsed = parseJson(r.content);
     } catch {
       // Final safety net: never hard-fail. Return a degraded report built from
       // the raw crawl/search text so the user still gets a usable dossier.
@@ -191,22 +209,68 @@ export async function analyzeCompany(
     ...new Set([...(input.website ? [input.website] : []), ...input.crawledPages.map((p) => p.url), ...extraSources]),
   ];
 
+  // Anti-hallucination: only keep phone/address if the value actually appears
+  // in the source text. A blank is safer than an invented contact detail.
+  const rawPhone = (typeof parsed.phone === "string" && parsed.phone) || input.knownPhone || "";
+  const rawAddress = (typeof parsed.address === "string" && parsed.address) || input.knownAddress || "";
+  const phone = phoneInSource(rawPhone, sourceText) ? rawPhone : "";
+  const address = addressInSource(rawAddress, sourceText) ? rawAddress : "";
+
+  const confidence = computeConfidence(input);
+  // If a contact detail was rejected as unverified, never mark it high-confidence.
+  if (!phone && rawPhone) confidence.contact = "inferred";
+
   return {
     company: {
       name: (typeof parsed.name === "string" && parsed.name) || input.name,
       website: input.website || "",
-      phone: (typeof parsed.phone === "string" && parsed.phone) || input.knownPhone || "",
-      address:
-        (typeof parsed.address === "string" && parsed.address) || input.knownAddress || "",
+      phone,
+      address,
       products: toStringArray(parsed.products),
       painPoints: toStringArray(parsed.painPoints),
       summary: typeof parsed.summary === "string" ? parsed.summary : "",
     },
     competitors,
     sources: allSources,
-    model,
-    confidence: computeConfidence(input),
+    model: actualModel,
+    confidence,
   };
+}
+
+// Try the chosen model; on any failure fall back once to the stable default,
+// reporting which model actually produced the answer.
+async function callWithFallback(
+  messages: { role: string; content: string }[],
+  model: string,
+  key: string,
+): Promise<{ content: string; actualModel: string }> {
+  try {
+    return { content: await callOpenRouter(messages, model, key), actualModel: model };
+  } catch (e) {
+    if (model !== DEFAULT_MODEL) {
+      return { content: await callOpenRouter(messages, DEFAULT_MODEL, key), actualModel: DEFAULT_MODEL };
+    }
+    throw e;
+  }
+}
+
+// Verify a phone number appears in source by comparing digit sequences.
+function phoneInSource(phone: string, sourceLower: string): boolean {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 7) return false;
+  const srcDigits = sourceLower.replace(/\D/g, "");
+  // Match on the last 7 digits (ignores country-code / formatting differences).
+  return srcDigits.includes(digits.slice(-9)) || srcDigits.includes(digits.slice(-7));
+}
+
+// Verify an address by requiring a distinctive token from it to appear in source.
+function addressInSource(address: string, sourceLower: string): boolean {
+  if (!address) return false;
+  const tokens = address.toLowerCase().match(/[a-z0-9]{4,}/g) || [];
+  if (!tokens.length) return false;
+  const hits = tokens.filter((t) => sourceLower.includes(t)).length;
+  // Require most address tokens to be present — guards against invented streets.
+  return hits >= Math.max(2, Math.ceil(tokens.length * 0.5));
 }
 
 // Self-audit: rate how well each report section is backed by real evidence.

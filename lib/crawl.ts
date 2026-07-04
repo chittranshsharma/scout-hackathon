@@ -48,12 +48,21 @@ function fetchPage(url: string): Promise<string | null> {
 }
 
 function extract($: cheerio.CheerioAPI): { title: string; text: string } {
-  $("script, style, noscript, svg, nav, footer, header, form, iframe").remove();
+  $("script, style, noscript, svg, nav, footer, header, form, iframe, template").remove();
+  // Strip cookie/consent/ad banners so their boilerplate doesn't pollute AI input.
+  $(
+    '[id*="cookie" i], [class*="cookie" i], [id*="consent" i], [class*="consent" i], [class*="banner" i], [id*="gdpr" i], [class*="gdpr" i], [aria-label*="cookie" i], [role="dialog"]',
+  ).remove();
   const title = $("title").first().text().trim() || $("h1").first().text().trim();
   const parts: string[] = [];
+  const seen = new Set<string>();
   $("h1, h2, h3, p, li").each((_, el) => {
     const t = $(el).text().replace(/\s+/g, " ").trim();
-    if (t.length > 25) parts.push(t);
+    // Keep meaningful prose; drop shorties and repeated menu/CTA text.
+    if (t.length > 25 && !seen.has(t)) {
+      seen.add(t);
+      parts.push(t);
+    }
   });
   let text = parts.join("\n");
   if (text.length > MAX_TEXT_PER_PAGE) text = text.slice(0, MAX_TEXT_PER_PAGE);
@@ -139,7 +148,34 @@ async function extractEnrichment(html: string, origin: string): Promise<Enrichme
   return { logo, brandColor, techStack: techStack.slice(0, 8), socials };
 }
 
-function discoverLinks($: cheerio.CheerioAPI, origin: string): string[] {
+// Minimal robots.txt respect: collect Disallow paths under `User-agent: *`.
+async function fetchDisallowed(origin: string): Promise<string[]> {
+  try {
+    const res = await fetch(`${origin}/robots.txt`, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return [];
+    const txt = await res.text();
+    const rules: string[] = [];
+    let appliesToAll = false;
+    for (const line of txt.split("\n")) {
+      const l = line.trim();
+      const ua = l.match(/^user-agent:\s*(.+)$/i);
+      if (ua) {
+        appliesToAll = ua[1].trim() === "*";
+        continue;
+      }
+      const dis = l.match(/^disallow:\s*(.+)$/i);
+      if (dis && appliesToAll) {
+        const p = dis[1].trim();
+        if (p && p !== "/") rules.push(p.toLowerCase());
+      }
+    }
+    return rules;
+  } catch {
+    return [];
+  }
+}
+
+function discoverLinks($: cheerio.CheerioAPI, origin: string, disallowed: string[] = []): string[] {
   const scored: { url: string; score: number }[] = [];
   const seen = new Set<string>();
 
@@ -155,7 +191,10 @@ function discoverLinks($: cheerio.CheerioAPI, origin: string): string[] {
     if (abs.origin !== origin) return; // same-domain only
     const path = abs.pathname.toLowerCase();
     if (SKIP_FRAGMENTS.some((f) => path.includes(f) || href.includes(f))) return;
+    if (disallowed.some((d) => path.startsWith(d))) return; // robots.txt
 
+    // Normalize: drop query string + trailing slash BEFORE dedupe so
+    // /pricing, /pricing/ and /pricing?ref=nav collapse to one page.
     const clean = abs.origin + abs.pathname.replace(/\/$/, "");
     if (seen.has(clean)) return;
     seen.add(clean);
@@ -183,8 +222,8 @@ export async function crawlSite(
   const pages: CrawledPage[] = [];
   let enrichment: Enrichment = { techStack: [], socials: [] };
 
-  // 1. homepage
-  const homeHtml = await fetchPage(startUrl);
+  // Fetch robots.txt + homepage together.
+  const [disallowed, homeHtml] = await Promise.all([fetchDisallowed(origin), fetchPage(startUrl)]);
   const queue: string[] = [];
   if (homeHtml) {
     // Enrichment from the pristine HTML before extract() strips header/footer.
@@ -197,7 +236,7 @@ export async function crawlSite(
       pages.push({ url: startUrl, title, text });
       contentHashes.add(text.slice(0, 200));
     }
-    queue.push(...discoverLinks($, origin));
+    queue.push(...discoverLinks($, origin, disallowed));
   }
 
   const total = Math.min(MAX_PAGES, queue.length + 1);
@@ -221,6 +260,13 @@ export async function crawlSite(
 
     pages.push({ url, title, text });
     onPage?.(pages.length, total, url);
+  }
+
+  // Low-yield detection (JS-heavy SPA that cheerio can't render): the caller
+  // still has Serper snippets to lean on, but log it for visibility.
+  const totalChars = pages.reduce((n, p) => n + p.text.length, 0);
+  if (pages.length > 0 && totalChars < 300) {
+    console.warn(`[crawl] low content yield for ${origin} (${totalChars} chars) — likely JS-rendered; relying on search snippets.`);
   }
 
   return { pages, sources: pages.map((p) => p.url), enrichment };

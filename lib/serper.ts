@@ -63,20 +63,44 @@ export async function findOfficialWebsite(
   const data = await serperSearch(`${name} official website`, key, 10);
   const sources: string[] = [];
 
-  // Prefer knowledge graph website when present.
-  const kgSite = data.knowledgeGraph?.website;
-  if (kgSite && isOfficialCandidate(kgSite)) {
-    sources.push(kgSite);
-    return { website: normalizeUrl(kgSite), knowledge: data.knowledgeGraph, sources };
+  // Ordered candidates: knowledge-graph site first, then non-aggregator organics.
+  const candidates: string[] = [];
+  if (data.knowledgeGraph?.website && isOfficialCandidate(data.knowledgeGraph.website)) {
+    candidates.push(data.knowledgeGraph.website);
+  }
+  for (const r of data.organic ?? []) {
+    if (isOfficialCandidate(r.link)) candidates.push(r.link);
   }
 
-  for (const r of data.organic ?? []) {
-    if (isOfficialCandidate(r.link)) {
-      sources.push(r.link);
-      return { website: normalizeUrl(r.link), knowledge: data.knowledgeGraph, sources };
+  // Accept the first candidate whose homepage actually resolves (not a dead/404
+  // link) — otherwise fall through to the next result instead of taking [0] blindly.
+  let firstValidByFormat: string | undefined;
+  for (const link of candidates.slice(0, 5)) {
+    const url = normalizeUrl(link);
+    firstValidByFormat ??= url;
+    if (await urlResolves(url)) {
+      sources.push(link);
+      return { website: url, knowledge: data.knowledgeGraph, sources };
     }
   }
-  return { knowledge: data.knowledgeGraph, sources };
+  // None validated (site blocking HEAD, or network) — use best-format candidate.
+  if (firstValidByFormat) sources.push(firstValidByFormat);
+  return { website: firstValidByFormat, knowledge: data.knowledgeGraph, sources };
+}
+
+// Confirm a URL loads without a hard 4xx/5xx. Tolerates HEAD-blocking sites.
+async function urlResolves(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      redirect: "follow",
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; CompanyResearchBot/1.0)" },
+      signal: AbortSignal.timeout(7000),
+    });
+    return res.status < 400;
+  } catch {
+    return false;
+  }
 }
 
 // Gather supporting public info + contact snippets for a company.
