@@ -104,6 +104,7 @@ async function urlResolves(url: string): Promise<boolean> {
 }
 
 // Gather supporting public info + contact snippets for a company.
+// Single query (saves a Serper call — total per-run: 3 instead of 4).
 export async function gatherPublicInfo(
   name: string,
   key: string,
@@ -113,20 +114,17 @@ export async function gatherPublicInfo(
   let phone: string | undefined;
   let address: string | undefined;
 
-  const queries = [`${name} company overview`, `${name} headquarters contact phone address`];
-  for (const q of queries) {
-    try {
-      const data = await serperSearch(q, key, 6);
-      if (data.knowledgeGraph?.phone) phone ??= data.knowledgeGraph.phone;
-      if (data.knowledgeGraph?.address) address ??= data.knowledgeGraph.address;
-      if (data.answerBox?.snippet) snippets.push(data.answerBox.snippet);
-      for (const r of data.organic ?? []) {
-        if (r.snippet) snippets.push(`${r.title}: ${r.snippet}`);
-        sources.push(r.link);
-      }
-    } catch {
-      // best-effort enrichment; ignore individual query failures
+  try {
+    const data = await serperSearch(`${name} company overview headquarters contact`, key, 10);
+    if (data.knowledgeGraph?.phone) phone = data.knowledgeGraph.phone;
+    if (data.knowledgeGraph?.address) address = data.knowledgeGraph.address;
+    if (data.answerBox?.snippet) snippets.push(data.answerBox.snippet);
+    for (const r of data.organic ?? []) {
+      if (r.snippet) snippets.push(`${r.title}: ${r.snippet}`);
+      sources.push(r.link);
     }
+  } catch {
+    // best-effort enrichment; ignore query failure
   }
   return { snippets: snippets.slice(0, 12), sources: [...new Set(sources)].slice(0, 8), phone, address };
 }

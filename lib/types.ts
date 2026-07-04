@@ -69,10 +69,10 @@ export type StreamEvent = ProgressEvent | ReportEvent | ErrorEvent | ContextEven
 export const DEFAULT_MODEL = "meta-llama/llama-3.3-70b-instruct:free";
 
 export const MODEL_OPTIONS = [
-  { id: "meta-llama/llama-3.3-70b-instruct:free", label: "Llama 3.3 70B (free)" },
+  { id: "meta-llama/llama-3.3-70b-instruct:free", label: "Llama 3.3 70B (free) — Recommended" },
+  { id: "google/gemma-4-31b-it:free", label: "Gemma 4 31B (free, fast)" },
   { id: "qwen/qwen3-next-80b-a3b-instruct:free", label: "Qwen3 Next 80B (free)" },
-  { id: "google/gemma-4-31b-it:free", label: "Gemma 4 31B (free)" },
-  { id: "meta-llama/llama-3.2-3b-instruct:free", label: "Llama 3.2 3B (free, fast)" },
+  { id: "meta-llama/llama-3.2-3b-instruct:free", label: "Llama 3.2 3B (free, fastest)" },
   { id: "openai/gpt-oss-120b:free", label: "GPT-OSS 120B (free)" },
   { id: "nvidia/nemotron-3-super-120b-a12b:free", label: "Nemotron 3 Super 120B (free)" },
 ];

@@ -74,12 +74,13 @@ async function callOpenRouter(
   model: string,
   key: string,
   useJsonMode = true,
+  maxTokens = 2000,
 ): Promise<string> {
   const body: Record<string, unknown> = {
     model,
     messages,
     temperature: 0.4,
-    max_tokens: 2000,
+    max_tokens: maxTokens,
   };
   // Not every free model supports structured-output mode; we retry without it.
   if (useJsonMode) body.response_format = { type: "json_object" };
@@ -93,7 +94,7 @@ async function callOpenRouter(
       "X-Title": "AI Company Research Assistant",
     },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(60000),
+    signal: AbortSignal.timeout(45000),
   });
 
   const data: ORResponse = await res.json();
@@ -101,7 +102,7 @@ async function callOpenRouter(
     const msg = data.error?.message || `HTTP ${res.status}`;
     // A model that rejects response_format → retry once without JSON mode.
     if (useJsonMode && /response_format|json|not support|invalid/i.test(msg)) {
-      return callOpenRouter(messages, model, key, false);
+      return callOpenRouter(messages, model, key, false, maxTokens);
     }
     throw new Error(`OpenRouter error: ${msg}`);
   }
@@ -186,9 +187,7 @@ export async function analyzeCompany(
       const firstText = input.crawledPages[0]?.text || input.searchSnippets.join(" ");
       parsed = {
         name: input.name,
-        summary: firstText
-          ? firstText.slice(0, 400).trim()
-          : "AI analysis unavailable for this model — try another model from Settings or the Compare-model control.",
+        summary: "⚠️ AI analysis failed for this model (invalid output or timeout). Please click 'Regenerate' or switch to the Recommended model (Llama 3.3 70B) in the Compare dropdown below.",
         products: [],
         painPoints: [],
         competitors: [],
@@ -244,12 +243,13 @@ async function callWithFallback(
   messages: { role: string; content: string }[],
   model: string,
   key: string,
+  maxTokens = 2000,
 ): Promise<{ content: string; actualModel: string }> {
   const chain = [model, ...MODEL_OPTIONS.map((m) => m.id).filter((id) => id !== model)];
   let lastErr: unknown;
   for (const mdl of chain) {
     try {
-      return { content: await callOpenRouter(messages, mdl, key), actualModel: mdl };
+      return { content: await callOpenRouter(messages, mdl, key, true, maxTokens), actualModel: mdl };
     } catch (e) {
       lastErr = e;
       // rate-limited or provider error → immediately try the next model
@@ -316,6 +316,16 @@ const BANNED_PHRASES = [
   "dive into",
   "take it to the next level",
   "in this day and age",
+  "streamline",
+  "robust",
+  "harness",
+  "empower",
+  "elevate",
+  "landscape",
+  "ecosystem",
+  "holistic",
+  "best-in-class",
+  "state-of-the-art",
 ];
 
 const EMAIL_PROMPT = `You write cold outreach emails for Relu Consultancy, an AI and automation consulting firm. Write like a real person sending a quick email, not like a marketer.
@@ -327,6 +337,7 @@ HARD RULES:
 - Open with something specific to THIS company (a product or a real pain point), not a greeting about yourself.
 - One clear ask at the end: a short call.
 - Subject line is short and specific, no clickbait.
+- WRITE THE ACTUAL EMAIL. Do not output placeholders, schemas, or "..." dummy text.
 
 Here is the tone to match:
 Subject: Question about scaling VideoSDK's support
@@ -338,9 +349,13 @@ Return ONLY JSON: { "subject": string, "body": string }. Body may use \\n for li
 // that slips through, so email output never reads AI-generated.
 function sanitizeEmail(text: string): string {
   let t = text.replace(/\s*[—–]\s*/g, ", "); // em/en dash → comma
+  t = t.replace(/--/g, ", "); // double-hyphen (dash alternative) → comma
   for (const p of BANNED_PHRASES) {
     t = t.replace(new RegExp(p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), "");
   }
+  // Cap exclamation marks at 1 max in the body (keeps tone natural, not flat).
+  let bangCount = 0;
+  t = t.replace(/!/g, () => (++bangCount <= 1 ? "!" : "."));
   return t
     .replace(/ ,/g, ",")
     .replace(/,\s*,/g, ",")
@@ -369,13 +384,17 @@ Pain points: ${c.painPoints.map((p) => `- ${p}`).join("\n")}`;
 
   let parsed: Record<string, unknown>;
   try {
-    parsed = parseJson((await callWithFallback(messages, model, key)).content);
-  } catch {
+    parsed = parseJson((await callWithFallback(messages, model, key, 2000)).content);
+    if (typeof parsed.subject !== "string" || parsed.subject.replace(/\./g, "").trim().length < 3) throw new Error("Invalid subject");
+    if (typeof parsed.body !== "string" || parsed.body.replace(/\./g, "").trim().length < 10) throw new Error("Invalid body");
+  } catch (err) {
     const repair = [
       ...messages,
       { role: "user", content: "Respond again with ONLY the JSON object { subject, body }." },
     ];
-    parsed = parseJson((await callWithFallback(repair, model, key)).content);
+    parsed = parseJson((await callWithFallback(repair, model, key, 2000)).content);
+    if (typeof parsed.subject !== "string" || parsed.subject.replace(/\./g, "").trim().length < 3) throw new Error("Invalid subject");
+    if (typeof parsed.body !== "string" || parsed.body.replace(/\./g, "").trim().length < 10) throw new Error("Invalid body");
   }
   return {
     subject: sanitizeEmail(typeof parsed.subject === "string" ? parsed.subject : `A quick idea for ${c.name}`),

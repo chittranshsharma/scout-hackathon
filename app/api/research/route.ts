@@ -116,21 +116,21 @@ export async function POST(req: NextRequest) {
 
         send({ type: "report", report });
 
-        // Emit condensed grounding context for follow-up chat (client holds it).
+        // Emit condensed grounding context for follow-up chat + reanalyze.
+        // Compact report summary first, then abbreviated crawl text for reanalyze
+        // quality — capped at 3000 chars to cut token waste.
         const context = [
           `Company: ${report.company.name} (${report.company.website || "no site"})`,
           report.company.summary,
           `Products/Services: ${report.company.products.join(", ")}`,
           `Pain points: ${report.company.painPoints.join(" | ")}`,
           `Competitors: ${report.competitors.map((c) => c.name).join(", ")}`,
-          "--- Crawled content ---",
-          ...crawlPages.map((p) => `# ${p.title}\n${p.text}`),
-          "--- Search snippets ---",
-          ...searchSnippets,
+          ...crawlPages.slice(0, 3).map((p) => `# ${p.title}\n${p.text.slice(0, 600)}`),
+          ...searchSnippets.slice(0, 4),
         ]
           .filter(Boolean)
           .join("\n\n")
-          .slice(0, 8000);
+          .slice(0, 3000);
         send({ type: "context", context });
 
         progress("done", "Research complete");

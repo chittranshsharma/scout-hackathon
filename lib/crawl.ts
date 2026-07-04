@@ -12,7 +12,7 @@ export type Enrichment = {
 export type CrawlResult = { pages: CrawledPage[]; sources: string[]; enrichment: Enrichment };
 
 const MAX_PAGES = 6;
-const PER_PAGE_TIMEOUT = 6000; // slow pages are usually dead weight
+const PER_PAGE_TIMEOUT = 5000; // slow pages are usually dead weight
 const CONCURRENCY = 5; // parallel internal-page fetches
 const MAX_TEXT_PER_PAGE = 2000; // chars sent to AI per page (relevance-ranked)
 const UA =
@@ -108,7 +108,7 @@ const SOCIAL_HOSTS: [string, RegExp][] = [
 
 async function validImage(url: string): Promise<boolean> {
   try {
-    const res = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(5000) });
+    const res = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(3000) });
     return res.ok && (res.headers.get("content-type") || "").startsWith("image");
   } catch {
     return false;

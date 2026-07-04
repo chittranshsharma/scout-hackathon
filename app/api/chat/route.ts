@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
             "HTTP-Referer": "https://company-research-assistant.vercel.app",
             "X-Title": "AI Company Research Assistant",
           },
-          body: JSON.stringify({ model, messages, temperature: 0.5, max_tokens: 500, stream: true }),
+          body: JSON.stringify({ model, messages, temperature: 0.5, max_tokens: 400, stream: true }),
           signal: AbortSignal.timeout(55000),
         });
 

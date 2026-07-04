@@ -484,6 +484,7 @@ export default function ReportCard({
             {rerunning ? "Re-running…" : "Re-run"}
           </button>
           <span className="type-fine-print text-ink-muted-48">Currently: {report.model}</span>
+          <span className="type-fine-print text-ink-muted-48">Recommended: Llama 3.3 70B for accuracy</span>
           {rerunError && (
             <span className="type-fine-print" style={{ color: "var(--color-danger)" }}>
               {rerunError}

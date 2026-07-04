@@ -32,6 +32,26 @@ const CHAT_STARTERS = ["How do they make money?", "Who's their biggest competito
 function App() {
   const { settings, hasAI, hasDiscord } = useSettings();
   const [runs, setRuns] = useState<Run[]>([]);
+  const loaded = useRef(false);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("scout-runs");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          setRuns(parsed.map((r: Run) => (r.running ? { ...r, running: false, error: r.error || "Interrupted" } : r)));
+        }
+      }
+    } catch {}
+    loaded.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (loaded.current) {
+      localStorage.setItem("scout-runs", JSON.stringify(runs));
+    }
+  }, [runs]);
   const [input, setInput] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);

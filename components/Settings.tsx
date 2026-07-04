@@ -120,7 +120,7 @@ export default function Settings({ open, onClose }: { open: boolean; onClose: ()
                     }}
                   />
                 )}
-                <p className="type-fine-print mt-2 text-ink-muted-48">Any OpenRouter model. Free models cost nothing.</p>
+                <p className="type-fine-print mt-2 text-ink-muted-48">Llama 3.3 70B recommended for best accuracy and JSON reliability. All models are free.</p>
               </div>
 
               <Labeled
